@@ -1,27 +1,38 @@
 import Link from "next/link";
 import { getCurrentUser } from "@/lib/current-user";
 import { LogoutButton } from "./logout-button";
+import { NavLink } from "./nav-link";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await getCurrentUser();
 
   return (
-    <div className="flex flex-1 flex-col">
-      <header className="flex items-center justify-between border-b border-zinc-200 bg-white px-6 py-3">
-        <nav className="flex items-center gap-4 text-sm font-medium text-zinc-700">
+    <div className="flex flex-1">
+      <aside className="flex w-56 flex-col border-r border-zinc-200 bg-white">
+        <div className="border-b border-zinc-200 px-4 py-4">
           <Link href="/" className="font-semibold text-zinc-900">
             Guest Squad CRM
           </Link>
-          <Link href="/">Home</Link>
-          {user?.role === "super_admin" && <Link href="/users">Users</Link>}
-          <Link href="/profile">Profile</Link>
-        </nav>
-        <div className="flex items-center gap-3">
-          <span className="text-sm text-zinc-500">{user?.name}</span>
-          <LogoutButton />
         </div>
-      </header>
-      <main className="flex flex-1 flex-col">{children}</main>
+
+        <nav className="flex flex-1 flex-col gap-1 p-3">
+          <NavLink href="/">Dashboard</NavLink>
+          <NavLink href="/companies">Companies</NavLink>
+          <NavLink href="/contacts">Contacts</NavLink>
+          {user?.role === "super_admin" && <NavLink href="/users">Users</NavLink>}
+        </nav>
+
+        <div className="border-t border-zinc-200 p-3">
+          <Link href="/profile" className="block rounded-md px-3 py-2 text-sm text-zinc-600 hover:bg-zinc-100">
+            {user?.name}
+          </Link>
+          <div className="px-3 pb-1">
+            <LogoutButton />
+          </div>
+        </div>
+      </aside>
+
+      <main className="flex flex-1 flex-col overflow-y-auto">{children}</main>
     </div>
   );
 }
