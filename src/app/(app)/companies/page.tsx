@@ -2,6 +2,8 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { COMPANY_TYPES, LIFECYCLE_STAGES, LEAD_STATUSES } from "@/lib/companies/constants";
 
+export const dynamic = "force-dynamic";
+
 export default async function CompaniesPage({
   searchParams,
 }: {

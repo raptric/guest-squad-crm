@@ -3,6 +3,11 @@ import { getCurrentUser } from "@/lib/current-user";
 import { LogoutButton } from "./logout-button";
 import { NavLink } from "./nav-link";
 
+// Every page under here reads live, frequently-mutated data (companies, contacts, signals,
+// users) and gets refreshed via router.refresh() after inline add/edit forms -- without this,
+// Next's fetch cache can serve a stale Supabase response for a request URL it's seen before.
+export const dynamic = "force-dynamic";
+
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await getCurrentUser();
 

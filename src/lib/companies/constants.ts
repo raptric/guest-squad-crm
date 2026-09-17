@@ -65,3 +65,86 @@ export const PORTFOLIO_ROLES = [
   "Franchised Property",
   "Other",
 ] as const;
+
+export const RATING_CHANNELS = [
+  "google",
+  "booking_com",
+  "expedia",
+  "hotels_com",
+  "tripadvisor",
+  "vrbo",
+  "airbnb",
+  "other",
+] as const;
+
+export const STRENGTH_LEVELS = ["Strong", "Medium", "Weak", "Unknown"] as const;
+
+export const HIRING_SIGNAL_ROLES = [
+  "Front Desk / Reception",
+  "Night Auditor / Night Reception",
+  "Reservations",
+  "Guest Relations",
+  "Front Office Manager",
+  "Customer Service",
+  "Operations",
+  "Concierge",
+  "Telephone Operator / Call Center",
+  "Other",
+] as const;
+
+// No DB CHECK on these two -- validated at the app layer so the list can grow without a
+// migration (see schema.sql comments on company_signals / property_pain_signals).
+export const COMPANY_SIGNAL_TYPES = [
+  "Guest Response Complaints",
+  "Unanswered Calls",
+  "Slow Communication",
+  "After-hours Coverage Gap",
+  "Reservation Pressure",
+  "Check-in / Access Issues",
+  "OTA Messaging Issues",
+  "New Property Opening",
+  "Portfolio Expansion",
+  "Management Change",
+  "High Guest Volume",
+  "Seasonal Staffing Pressure",
+  "Other",
+] as const;
+
+export const PAIN_SIGNAL_TYPES = [
+  "Calls",
+  "Reservations",
+  "After-hours",
+  "Check-in / Access",
+  "OTA Messaging",
+  "WhatsApp",
+  "Guest Requests",
+  "Front Desk Staffing",
+  "Reviews",
+  "Other",
+] as const;
+
+export const CONTACT_ROLES = [
+  "Owner / Founder",
+  "General Manager",
+  "Hotel Manager",
+  "VP / Director Operations",
+  "Regional Operations",
+  "Rooms Director",
+  "Front Office",
+  "Reservations",
+  "Revenue",
+  "Guest Relations",
+  "Other",
+] as const;
+
+export const DECISION_MAKER_LEVELS = [
+  "Primary Decision Maker",
+  "Influencer",
+  "Secondary Contact",
+  "Unknown",
+] as const;
+
+export const CONTACT_LINE_TYPES = ["Front Desk", "Owner-Run", "Unknown"] as const;
+
+// V1 only writes these manually; the enum has V2-V4 values too (research, outreach_sent, etc.)
+export const MANUAL_ACTIVITY_TYPES = ["note", "call", "email", "status_change"] as const;

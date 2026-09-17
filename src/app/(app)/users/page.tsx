@@ -3,6 +3,8 @@ import { getCurrentUser } from "@/lib/current-user";
 import { createClient } from "@/lib/supabase/server";
 import { CreateUserForm } from "./create-user-form";
 
+export const dynamic = "force-dynamic";
+
 export default async function UsersPage() {
   const currentUser = await getCurrentUser();
   if (currentUser?.role !== "super_admin") {
