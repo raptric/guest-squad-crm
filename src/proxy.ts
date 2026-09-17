@@ -31,10 +31,17 @@ export async function proxy(request: NextRequest) {
 
   const { pathname } = request.nextUrl;
   const isLoginPage = pathname.startsWith("/login");
+  // API routes authenticate themselves (session cookie for browser-driven calls, a bearer
+  // token for machine-to-machine ones like the Google Maps ingest endpoint) and return their
+  // own JSON error -- redirecting them to the HTML /login page would break both cases.
+  const isApiRoute = pathname.startsWith("/api/");
   // /reset-password has no server-visible session on first load -- the recovery/invite
   // session is only established client-side once the browser processes the auth link.
   const isPublicRoute =
-    isLoginPage || pathname.startsWith("/forgot-password") || pathname.startsWith("/reset-password");
+    isApiRoute ||
+    isLoginPage ||
+    pathname.startsWith("/forgot-password") ||
+    pathname.startsWith("/reset-password");
 
   if (!user && !isPublicRoute) {
     const url = request.nextUrl.clone();
