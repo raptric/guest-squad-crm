@@ -10,11 +10,19 @@ export default async function CompaniesPage({
   const params = await searchParams;
   const supabase = await createClient();
 
+  const pageSize = 20;
+  const page = Math.max(1, parseInt(params.page ?? "1", 10) || 1);
+  const from = (page - 1) * pageSize;
+  const to = from + pageSize - 1;
+
   let query = supabase
     .from("companies")
-    .select("id, name, city, country, company_type, lifecycle_stage, lead_status, prospect_tier")
+    .select("id, name, city, country, company_type, lifecycle_stage, lead_status, prospect_tier", {
+      count: "exact",
+    })
     .is("deleted_at", null)
-    .order("created_at", { ascending: false });
+    .order("created_at", { ascending: false })
+    .range(from, to);
 
   if (params.city) query = query.ilike("city", `%${params.city}%`);
   if (params.country) query = query.ilike("country", `%${params.country}%`);
@@ -22,7 +30,16 @@ export default async function CompaniesPage({
   if (params.lifecycle_stage) query = query.eq("lifecycle_stage", params.lifecycle_stage);
   if (params.lead_status) query = query.eq("lead_status", params.lead_status);
 
-  const { data: companies } = await query;
+  const { data: companies, count } = await query;
+  const totalPages = Math.max(1, Math.ceil((count ?? 0) / pageSize));
+
+  const pageHref = (targetPage: number) => {
+    const qs = new URLSearchParams(
+      Object.entries(params).filter(([k, v]) => k !== "page" && v) as [string, string][]
+    );
+    qs.set("page", String(targetPage));
+    return `/companies?${qs.toString()}`;
+  };
 
   return (
     <div className="mx-auto w-full max-w-5xl space-y-6 p-8">
@@ -149,6 +166,26 @@ export default async function CompaniesPage({
           )}
         </tbody>
       </table>
+
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between text-sm text-zinc-600">
+          <span>
+            Page {page} of {totalPages} ({count} total)
+          </span>
+          <div className="flex gap-2">
+            {page > 1 && (
+              <Link href={pageHref(page - 1)} className="rounded-md border border-zinc-300 px-3 py-1.5 hover:bg-zinc-50">
+                Previous
+              </Link>
+            )}
+            {page < totalPages && (
+              <Link href={pageHref(page + 1)} className="rounded-md border border-zinc-300 px-3 py-1.5 hover:bg-zinc-50">
+                Next
+              </Link>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
