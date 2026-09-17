@@ -45,27 +45,35 @@ export default async function CompanyDetailPage({
 
   return (
     <div className="mx-auto w-full max-w-3xl space-y-6 p-8">
-      <div>
-        <Link href="/companies" className="text-sm text-zinc-500 hover:text-zinc-700">
-          Back to Companies
-        </Link>
-        <h1 className="text-2xl font-semibold text-zinc-900">{company.name}</h1>
-        <div className="mt-1 flex flex-wrap gap-2 text-xs text-zinc-500">
-          <span className="rounded bg-zinc-100 px-2 py-0.5">{company.company_type}</span>
-          <span className="rounded bg-zinc-100 px-2 py-0.5">{company.lifecycle_stage}</span>
-          <span className="rounded bg-zinc-100 px-2 py-0.5">{company.lead_status}</span>
-          {company.prospect_tier && (
-            <span className="rounded bg-zinc-100 px-2 py-0.5">{company.prospect_tier}</span>
-          )}
-          {parentCompany && (
-            <span className="rounded bg-zinc-100 px-2 py-0.5">
-              Part of{" "}
-              <Link href={`/companies/${parentCompany.id}`} className="underline">
-                {parentCompany.name}
-              </Link>
-            </span>
-          )}
+      <div className="flex items-start justify-between">
+        <div>
+          <Link href="/companies" className="text-sm text-zinc-500 hover:text-zinc-700">
+            Back to Companies
+          </Link>
+          <h1 className="text-2xl font-semibold text-zinc-900">{company.name}</h1>
         </div>
+        <Link
+          href={`/companies/${id}/edit`}
+          className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+        >
+          Edit
+        </Link>
+      </div>
+      <div className="flex flex-wrap gap-2 text-xs text-zinc-500">
+        <span className="rounded bg-zinc-100 px-2 py-0.5">{company.company_type}</span>
+        <span className="rounded bg-zinc-100 px-2 py-0.5">{company.lifecycle_stage}</span>
+        <span className="rounded bg-zinc-100 px-2 py-0.5">{company.lead_status}</span>
+        {company.prospect_tier && (
+          <span className="rounded bg-zinc-100 px-2 py-0.5">{company.prospect_tier}</span>
+        )}
+        {parentCompany && (
+          <span className="rounded bg-zinc-100 px-2 py-0.5">
+            Part of{" "}
+            <Link href={`/companies/${parentCompany.id}`} className="underline">
+              {parentCompany.name}
+            </Link>
+          </span>
+        )}
       </div>
 
       <section className="space-y-3 rounded-lg border border-zinc-200 bg-white p-6">

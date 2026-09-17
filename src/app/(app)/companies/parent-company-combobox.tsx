@@ -4,10 +4,18 @@ import { useEffect, useRef, useState } from "react";
 
 type CompanyOption = { id: number; name: string; company_type: string };
 
-export function ParentCompanyCombobox({ name }: { name: string }) {
+export function ParentCompanyCombobox({
+  name,
+  initialValue,
+  excludeId,
+}: {
+  name: string;
+  initialValue?: CompanyOption | null;
+  excludeId?: number;
+}) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<CompanyOption[]>([]);
-  const [selected, setSelected] = useState<CompanyOption | null>(null);
+  const [selected, setSelected] = useState<CompanyOption | null>(initialValue ?? null);
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -15,13 +23,15 @@ export function ParentCompanyCombobox({ name }: { name: string }) {
     if (selected) return;
 
     const timeout = setTimeout(() => {
-      fetch(`/api/companies/search?q=${encodeURIComponent(query)}`)
+      const params = new URLSearchParams({ q: query });
+      if (excludeId) params.set("exclude", String(excludeId));
+      fetch(`/api/companies/search?${params.toString()}`)
         .then((res) => res.json())
         .then((body) => setResults(body.companies ?? []));
     }, 250);
 
     return () => clearTimeout(timeout);
-  }, [query, selected]);
+  }, [query, selected, excludeId]);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {

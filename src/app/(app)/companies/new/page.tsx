@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { CompanyForm } from "./company-form";
+import { CompanyForm } from "../company-form";
 
 export default async function NewCompanyPage() {
   const supabase = await createClient();

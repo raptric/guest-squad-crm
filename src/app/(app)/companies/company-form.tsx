@@ -15,10 +15,44 @@ import { ParentCompanyCombobox } from "./parent-company-combobox";
 
 type UserOption = { id: number; name: string };
 
-export function CompanyForm({ users }: { users: UserOption[] }) {
+export type CompanyInitialValues = {
+  name: string;
+  website: string | null;
+  company_type: string;
+  parent: { id: number; name: string; company_type: string } | null;
+  address_line_1: string | null;
+  address_line_2: string | null;
+  city: string | null;
+  state: string | null;
+  country: string | null;
+  zip: string | null;
+  phone: string | null;
+  lifecycle_stage: string;
+  lead_status: string;
+  prospect_tier: string | null;
+  qualification_summary: string | null;
+  sdr_signal_summary: string | null;
+  owner_id: number | null;
+  portfolio_size: number | null;
+  property_type: string | null;
+  property_class: string | null;
+  rooms_units: number | null;
+  portfolio_role: string | null;
+};
+
+export function CompanyForm({
+  users,
+  initialValues,
+  companyId,
+}: {
+  users: UserOption[];
+  initialValues?: CompanyInitialValues;
+  companyId?: number;
+}) {
   const router = useRouter();
-  const [companyType, setCompanyType] = useState<string>(COMPANY_TYPES[0]);
-  const [hasParent, setHasParent] = useState(false);
+  const isEdit = companyId !== undefined;
+  const [companyType, setCompanyType] = useState<string>(initialValues?.company_type ?? COMPANY_TYPES[0]);
+  const [hasParent, setHasParent] = useState(Boolean(initialValues?.parent));
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const isProperty = companyType === "Property";
@@ -32,8 +66,8 @@ export function CompanyForm({ users }: { users: UserOption[] }) {
     const formData = new FormData(e.currentTarget);
     const payload = Object.fromEntries(formData.entries());
 
-    const res = await fetch("/api/companies", {
-      method: "POST",
+    const res = await fetch(isEdit ? `/api/companies/${companyId}` : "/api/companies", {
+      method: isEdit ? "PATCH" : "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
@@ -42,11 +76,11 @@ export function CompanyForm({ users }: { users: UserOption[] }) {
     setLoading(false);
 
     if (!res.ok) {
-      setError(body.error ?? "Failed to create company");
+      setError(body.error ?? "Failed to save company");
       return;
     }
 
-    router.push(`/companies/${body.id}`);
+    router.push(`/companies/${isEdit ? companyId : body.id}`);
   }
 
   return (
@@ -54,8 +88,8 @@ export function CompanyForm({ users }: { users: UserOption[] }) {
       <fieldset className="space-y-4 rounded-lg border border-zinc-200 bg-white p-6">
         <legend className="px-1 text-sm font-semibold text-zinc-900">Basic Info</legend>
 
-        <Field label="Name" name="name" required />
-        <Field label="Website" name="website" />
+        <Field label="Name" name="name" required defaultValue={initialValues?.name} />
+        <Field label="Website" name="website" defaultValue={initialValues?.website ?? undefined} />
 
         <div className="space-y-1">
           <label htmlFor="company_type" className="text-sm font-medium text-zinc-700">
@@ -94,7 +128,11 @@ export function CompanyForm({ users }: { users: UserOption[] }) {
           <>
             <div className="space-y-1">
               <label className="text-sm font-medium text-zinc-700">Parent Company</label>
-              <ParentCompanyCombobox name="parent_company_id" />
+              <ParentCompanyCombobox
+                name="parent_company_id"
+                initialValue={initialValues?.parent}
+                excludeId={companyId}
+              />
             </div>
 
             {isProperty && (
@@ -102,6 +140,7 @@ export function CompanyForm({ users }: { users: UserOption[] }) {
                 label="Relationship to Portfolio"
                 name="portfolio_role"
                 options={PORTFOLIO_ROLES.filter((r) => r !== "Independent")}
+                defaultValue={initialValues?.portfolio_role ?? undefined}
               />
             )}
           </>
@@ -113,23 +152,24 @@ export function CompanyForm({ users }: { users: UserOption[] }) {
             name="portfolio_size"
             type="number"
             min={0}
+            defaultValue={initialValues?.portfolio_size ?? undefined}
           />
         )}
       </fieldset>
 
       <fieldset className="space-y-4 rounded-lg border border-zinc-200 bg-white p-6">
         <legend className="px-1 text-sm font-semibold text-zinc-900">Address</legend>
-        <Field label="Address Line 1" name="address_line_1" />
-        <Field label="Address Line 2" name="address_line_2" />
+        <Field label="Address Line 1" name="address_line_1" defaultValue={initialValues?.address_line_1 ?? undefined} />
+        <Field label="Address Line 2" name="address_line_2" defaultValue={initialValues?.address_line_2 ?? undefined} />
         <div className="grid grid-cols-2 gap-3">
-          <Field label="City" name="city" />
-          <Field label="State" name="state" />
+          <Field label="City" name="city" defaultValue={initialValues?.city ?? undefined} />
+          <Field label="State" name="state" defaultValue={initialValues?.state ?? undefined} />
         </div>
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Country" name="country" />
-          <Field label="Zip" name="zip" />
+          <Field label="Country" name="country" defaultValue={initialValues?.country ?? undefined} />
+          <Field label="Zip" name="zip" defaultValue={initialValues?.zip ?? undefined} />
         </div>
-        <Field label="Phone" name="phone" />
+        <Field label="Phone" name="phone" defaultValue={initialValues?.phone ?? undefined} />
       </fieldset>
 
       {isProperty && (
@@ -137,11 +177,29 @@ export function CompanyForm({ users }: { users: UserOption[] }) {
           <legend className="px-1 text-sm font-semibold text-zinc-900">Property Profile</legend>
 
           <div className="grid grid-cols-2 gap-3">
-            <SelectField label="Property Type" name="property_type" options={PROPERTY_TYPES} allowEmpty />
-            <SelectField label="Class" name="property_class" options={PROPERTY_CLASSES} allowEmpty />
+            <SelectField
+              label="Property Type"
+              name="property_type"
+              options={PROPERTY_TYPES}
+              allowEmpty
+              defaultValue={initialValues?.property_type ?? undefined}
+            />
+            <SelectField
+              label="Class"
+              name="property_class"
+              options={PROPERTY_CLASSES}
+              allowEmpty
+              defaultValue={initialValues?.property_class ?? undefined}
+            />
           </div>
 
-          <Field label="Rooms / Units" name="rooms_units" type="number" min={0} />
+          <Field
+            label="Rooms / Units"
+            name="rooms_units"
+            type="number"
+            min={0}
+            defaultValue={initialValues?.rooms_units ?? undefined}
+          />
         </fieldset>
       )}
 
@@ -149,14 +207,38 @@ export function CompanyForm({ users }: { users: UserOption[] }) {
         <legend className="px-1 text-sm font-semibold text-zinc-900">Lifecycle &amp; Qualification</legend>
 
         <div className="grid grid-cols-2 gap-3">
-          <SelectField label="Lifecycle Stage" name="lifecycle_stage" options={LIFECYCLE_STAGES} />
-          <SelectField label="Lead Status" name="lead_status" options={LEAD_STATUSES} />
+          <SelectField
+            label="Lifecycle Stage"
+            name="lifecycle_stage"
+            options={LIFECYCLE_STAGES}
+            defaultValue={initialValues?.lifecycle_stage}
+          />
+          <SelectField
+            label="Lead Status"
+            name="lead_status"
+            options={LEAD_STATUSES}
+            defaultValue={initialValues?.lead_status}
+          />
         </div>
 
-        <SelectField label="Prospect Tier" name="prospect_tier" options={PROSPECT_TIERS} allowEmpty />
+        <SelectField
+          label="Prospect Tier"
+          name="prospect_tier"
+          options={PROSPECT_TIERS}
+          allowEmpty
+          defaultValue={initialValues?.prospect_tier ?? undefined}
+        />
 
-        <TextAreaField label="Qualification Summary" name="qualification_summary" />
-        <TextAreaField label="Why Now (SDR Signal Summary)" name="sdr_signal_summary" />
+        <TextAreaField
+          label="Qualification Summary"
+          name="qualification_summary"
+          defaultValue={initialValues?.qualification_summary ?? undefined}
+        />
+        <TextAreaField
+          label="Why Now (SDR Signal Summary)"
+          name="sdr_signal_summary"
+          defaultValue={initialValues?.sdr_signal_summary ?? undefined}
+        />
       </fieldset>
 
       <fieldset className="space-y-4 rounded-lg border border-zinc-200 bg-white p-6">
@@ -168,7 +250,7 @@ export function CompanyForm({ users }: { users: UserOption[] }) {
           <select
             id="owner_id"
             name="owner_id"
-            defaultValue=""
+            defaultValue={initialValues?.owner_id ?? ""}
             className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm"
           >
             <option value="">Unassigned</option>
@@ -188,7 +270,7 @@ export function CompanyForm({ users }: { users: UserOption[] }) {
         disabled={loading}
         className="w-full rounded-md bg-zinc-900 px-3 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50"
       >
-        {loading ? "Creating..." : "Create Company"}
+        {loading ? "Saving..." : isEdit ? "Save Changes" : "Create Company"}
       </button>
     </form>
   );
@@ -200,12 +282,14 @@ function Field({
   required,
   type = "text",
   min,
+  defaultValue,
 }: {
   label: string;
   name: string;
   required?: boolean;
   type?: string;
   min?: number;
+  defaultValue?: string | number;
 }) {
   return (
     <div className="space-y-1">
@@ -218,13 +302,22 @@ function Field({
         type={type}
         min={min}
         required={required}
+        defaultValue={defaultValue}
         className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm"
       />
     </div>
   );
 }
 
-function TextAreaField({ label, name }: { label: string; name: string }) {
+function TextAreaField({
+  label,
+  name,
+  defaultValue,
+}: {
+  label: string;
+  name: string;
+  defaultValue?: string;
+}) {
   return (
     <div className="space-y-1">
       <label htmlFor={name} className="text-sm font-medium text-zinc-700">
@@ -234,6 +327,7 @@ function TextAreaField({ label, name }: { label: string; name: string }) {
         id={name}
         name={name}
         rows={3}
+        defaultValue={defaultValue}
         className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm"
       />
     </div>
@@ -245,11 +339,13 @@ function SelectField({
   name,
   options,
   allowEmpty,
+  defaultValue,
 }: {
   label: string;
   name: string;
   options: readonly string[];
   allowEmpty?: boolean;
+  defaultValue?: string;
 }) {
   return (
     <div className="space-y-1">
@@ -259,7 +355,7 @@ function SelectField({
       <select
         id={name}
         name={name}
-        defaultValue={allowEmpty ? "" : options[0]}
+        defaultValue={defaultValue ?? (allowEmpty ? "" : options[0])}
         className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm"
       >
         {allowEmpty && <option value="">—</option>}

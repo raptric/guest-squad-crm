@@ -17,9 +17,11 @@ export default async function CompaniesPage({
 
   let query = supabase
     .from("companies")
-    .select("id, name, city, country, company_type, lifecycle_stage, lead_status, prospect_tier", {
-      count: "exact",
-    })
+    .select(
+      `id, name, city, country, company_type, lifecycle_stage, lead_status, prospect_tier,
+       property_details ( property_type, property_class )`,
+      { count: "exact" }
+    )
     .is("deleted_at", null)
     .order("created_at", { ascending: false })
     .range(from, to);
@@ -134,6 +136,8 @@ export default async function CompaniesPage({
           <tr className="border-b border-zinc-200 text-left text-zinc-500">
             <th className="py-2 font-medium">Name</th>
             <th className="py-2 font-medium">Type</th>
+            <th className="py-2 font-medium">Property Type</th>
+            <th className="py-2 font-medium">Class</th>
             <th className="py-2 font-medium">City</th>
             <th className="py-2 font-medium">Country</th>
             <th className="py-2 font-medium">Lifecycle</th>
@@ -142,24 +146,34 @@ export default async function CompaniesPage({
           </tr>
         </thead>
         <tbody>
-          {companies?.map((c) => (
-            <tr key={c.id} className="border-b border-zinc-100 hover:bg-zinc-50">
-              <td className="py-2">
-                <Link href={`/companies/${c.id}`} className="font-medium text-zinc-900 hover:underline">
-                  {c.name}
-                </Link>
-              </td>
-              <td className="py-2 text-zinc-600">{c.company_type}</td>
-              <td className="py-2 text-zinc-600">{c.city}</td>
-              <td className="py-2 text-zinc-600">{c.country}</td>
-              <td className="py-2 text-zinc-600">{c.lifecycle_stage}</td>
-              <td className="py-2 text-zinc-600">{c.lead_status}</td>
-              <td className="py-2 text-zinc-600">{c.prospect_tier}</td>
-            </tr>
-          ))}
+          {companies?.map((c) => {
+            const propertyDetails = c.property_details as unknown as
+              | { property_type: string | null; property_class: string | null }
+              | { property_type: string | null; property_class: string | null }[]
+              | null;
+            const details = Array.isArray(propertyDetails) ? propertyDetails[0] : propertyDetails;
+
+            return (
+              <tr key={c.id} className="border-b border-zinc-100 hover:bg-zinc-50">
+                <td className="py-2">
+                  <Link href={`/companies/${c.id}`} className="font-medium text-zinc-900 hover:underline">
+                    {c.name}
+                  </Link>
+                </td>
+                <td className="py-2 text-zinc-600">{c.company_type}</td>
+                <td className="py-2 text-zinc-600">{details?.property_type ?? "—"}</td>
+                <td className="py-2 text-zinc-600">{details?.property_class ?? "—"}</td>
+                <td className="py-2 text-zinc-600">{c.city}</td>
+                <td className="py-2 text-zinc-600">{c.country}</td>
+                <td className="py-2 text-zinc-600">{c.lifecycle_stage}</td>
+                <td className="py-2 text-zinc-600">{c.lead_status}</td>
+                <td className="py-2 text-zinc-600">{c.prospect_tier}</td>
+              </tr>
+            );
+          })}
           {companies?.length === 0 && (
             <tr>
-              <td colSpan={7} className="py-8 text-center text-zinc-500">
+              <td colSpan={9} className="py-8 text-center text-zinc-500">
                 No companies yet.
               </td>
             </tr>
