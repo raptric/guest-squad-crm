@@ -1,7 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request });
 
   const supabase = createServerClient(
@@ -29,9 +29,14 @@ export async function middleware(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const isLoginPage = request.nextUrl.pathname.startsWith("/login");
+  const { pathname } = request.nextUrl;
+  const isLoginPage = pathname.startsWith("/login");
+  // /reset-password has no server-visible session on first load -- the recovery/invite
+  // session is only established client-side once the browser processes the auth link.
+  const isPublicRoute =
+    isLoginPage || pathname.startsWith("/forgot-password") || pathname.startsWith("/reset-password");
 
-  if (!user && !isLoginPage) {
+  if (!user && !isPublicRoute) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     return NextResponse.redirect(url);
