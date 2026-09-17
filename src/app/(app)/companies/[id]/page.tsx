@@ -7,6 +7,8 @@ import { AddHiringSignalForm } from "./add-hiring-signal-form";
 import { AddSignalForm } from "./add-signal-form";
 import { AddPainSignalForm } from "./add-pain-signal-form";
 import { AddActivityForm } from "./add-activity-form";
+import { AddOfferForm } from "./add-offer-form";
+import { OfferList } from "./offer-list";
 import { ChannelBadge, channelLabel } from "./channel-badge";
 
 export const dynamic = "force-dynamic";
@@ -45,6 +47,7 @@ export default async function CompanyDetailPage({
     { data: hiringSignals },
     { data: signals },
     { data: activities },
+    { data: offers },
   ] = await Promise.all([
     isProperty
       ? supabase
@@ -81,6 +84,11 @@ export default async function CompanyDetailPage({
       .select("id, activity_type, actor_name, body, created_at")
       .eq("company_id", id)
       .order("created_at", { ascending: false }),
+    supabase
+      .from("offer_recommendations")
+      .select("id, service, type, rationale")
+      .eq("company_id", id)
+      .order("type"),
   ]);
 
   const { data: painSignals } = propertyDetails
@@ -225,6 +233,18 @@ export default async function CompanyDetailPage({
               )}
             </section>
           )}
+
+          <section className="space-y-3 rounded-lg border border-zinc-200 bg-white p-5">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-zinc-900">Offer Recommendations</h2>
+              <AddOfferForm companyId={Number(id)} />
+            </div>
+            {!offers?.length ? (
+              <p className="text-sm text-zinc-500">No offer recommendations yet.</p>
+            ) : (
+              <OfferList companyId={Number(id)} offers={offers} />
+            )}
+          </section>
 
           <section className="space-y-3 rounded-lg border border-zinc-200 bg-white p-5">
             <h2 className="text-sm font-semibold text-zinc-900">Qualification</h2>

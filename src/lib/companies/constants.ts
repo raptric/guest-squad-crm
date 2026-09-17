@@ -148,3 +148,16 @@ export const CONTACT_LINE_TYPES = ["Front Desk", "Owner-Run", "Unknown"] as cons
 
 // V1 only writes these manually; the enum has V2-V4 values too (research, outreach_sent, etc.)
 export const MANUAL_ACTIVITY_TYPES = ["note", "call", "email", "status_change"] as const;
+
+export const OFFER_SERVICES = [
+  "After-hours Guest Support",
+  "Reservations",
+  "Full Guest Operations",
+  "Overflow Coverage",
+  "Front Desk Support",
+  "OTA / Messaging",
+  "Pilot",
+  "Other",
+] as const;
+
+export const OFFER_TYPES = ["Primary", "Secondary"] as const;
