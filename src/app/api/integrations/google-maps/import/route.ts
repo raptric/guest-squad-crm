@@ -43,10 +43,19 @@ export async function POST(request: Request) {
   }
 
   const body = await request.json();
-  const hotels: IncomingHotel[] = Array.isArray(body.hotels) ? body.hotels : [];
+  // Accepts either a single hotel object (one gscraper record per request, matching how it
+  // likely posts to HubSpot today) or a batch: { "hotels": [ ... ] }.
+  const hotels: IncomingHotel[] = Array.isArray(body.hotels)
+    ? body.hotels
+    : body.name
+      ? [body]
+      : [];
 
   if (hotels.length === 0) {
-    return NextResponse.json({ error: "hotels must be a non-empty array" }, { status: 400 });
+    return NextResponse.json(
+      { error: "Provide a single hotel object, or { \"hotels\": [...] } for a batch" },
+      { status: 400 }
+    );
   }
   if (hotels.length > MAX_BATCH_SIZE) {
     return NextResponse.json({ error: `Batch too large, max ${MAX_BATCH_SIZE} per request` }, { status: 400 });
