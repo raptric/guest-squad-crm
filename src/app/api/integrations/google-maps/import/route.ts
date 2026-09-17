@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { COMPANY_TYPES, PROPERTY_TYPES, LEAD_STATUSES } from "@/lib/companies/constants";
+import { matchEnum, normalizeDomain } from "@/lib/companies/matching";
 
 const MAX_BATCH_SIZE = 500;
 
@@ -21,22 +22,6 @@ type IncomingHotel = {
   // Free text (companies.source has no DB CHECK) -- defaults to "google_maps" if omitted.
   source?: string;
 };
-
-function matchEnum(value: string | undefined, allowed: readonly string[], fallback: string | null) {
-  if (!value) return fallback;
-  const hit = allowed.find((a) => a.toLowerCase() === value.toLowerCase());
-  return hit ?? fallback;
-}
-
-// Strips protocol/www/trailing slash so "https://www.foo.com/" and "foo.com" match.
-function normalizeDomain(value: string) {
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/^https?:\/\//, "")
-    .replace(/^www\./, "")
-    .replace(/\/+$/, "");
-}
 
 export async function POST(request: Request) {
   const authHeader = request.headers.get("authorization");

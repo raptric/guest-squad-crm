@@ -161,3 +161,7 @@ export const OFFER_SERVICES = [
 ] as const;
 
 export const OFFER_TYPES = ["Primary", "Secondary"] as const;
+
+// The research agent (MCP) can only move a lead into these states -- everything from
+// Qualified onward (Ready for Outreach, Engaged, etc.) stays a human decision.
+export const AGENT_ALLOWED_LEAD_STATUSES = ["Researching", "Needs Review", "Unqualified"] as const;
