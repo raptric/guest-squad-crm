@@ -68,11 +68,13 @@ needed on either side.
 | City | `city` | `companies.city` | No |
 | State / Region | `state` | `companies.state` | No |
 | ZIP / Postal Code | `zip` | `companies.zip` | No |
+| Country | `country` | `companies.country` | No |
 | Google Rating | `google_rating` | `company_ratings.rating` (channel `google`) | No |
 | Review Count | `google_review_count` | `company_ratings.review_count` (channel `google`) | No |
 | *(static)* | `hs_lead_status` | `companies.lead_status` | No (defaults `New`) |
 | *(static)* | `gs_company_type` | `companies.company_type` | No (defaults `Property`) |
 | *(static)* | `gs_property_type` | `property_details.property_type` | No (left blank if unrecognized) |
+| *(static, optional)* | `source` | `companies.source` — free text, no fixed list | No (defaults `google_maps`) |
 
 Enum fields are matched **case-insensitively** against the lists below; an unrecognized
 value falls back to the default rather than erroring the whole record.
@@ -86,8 +88,9 @@ value falls back to the default rather than erroring the whole record.
   `Decision Maker Needed`, `Ready for Outreach`, `Outreach Active`, `Engaged`, `Nurture`,
   `Unqualified`. Default: `New`.
 
-Country is not currently in the mapping (gscraper's sample didn't send it); add a `country`
-field to the JSON if needed — it isn't wired up on the receiving end yet.
+`companies.source` has no fixed list of allowed values (matches `signal_type`/`pain_type`
+elsewhere in this schema) — send anything descriptive (`"google_maps"`, `"import"`, a
+campaign name, etc.), or omit it and it defaults to `google_maps`.
 
 ## What happens on the server
 
@@ -103,9 +106,9 @@ For each record:
      currently deduped by name+city.
    - On update, only **non-null incoming fields overwrite existing data** — an empty field
      in a later scrape never blanks out something already filled in manually.
-3. **Create** (no match) — inserts the company (`source: google_maps`,
-   `lifecycle_stage: Prospect`), and if `company_type` is `Property`, also creates its
-   `property_details` row (`portfolio_role: Independent` by default).
+3. **Create** (no match) — inserts the company (`source` from the payload or `google_maps`
+   by default, `lifecycle_stage: Prospect`), and if `company_type` is `Property`, also
+   creates its `property_details` row (`portfolio_role: Independent` by default).
 4. **Rating** — if `google_rating` or `google_review_count` is present, upserts a
    `company_ratings` row for channel `google` (safe to send on every scrape; it just
    refreshes the existing number).
@@ -162,5 +165,3 @@ curl -X POST https://<your-domain>/api/integrations/google-maps/import \
 - **No Google Place ID dedup** — gscraper doesn't currently produce one; if it starts to,
   we should add a `google_place_id` column and prefer it over domain matching (more
   reliable than a normalized URL string).
-- **`country` not wired up** — present in Company records generally, just not mapped from
-  this endpoint yet since gscraper's sample payload didn't include it.

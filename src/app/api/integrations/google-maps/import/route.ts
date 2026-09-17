@@ -12,11 +12,14 @@ type IncomingHotel = {
   city?: string;
   state?: string;
   zip?: string;
+  country?: string;
   google_rating?: string | number;
   google_review_count?: string | number;
   hs_lead_status?: string;
   gs_company_type?: string;
   gs_property_type?: string;
+  // Free text (companies.source has no DB CHECK) -- defaults to "google_maps" if omitted.
+  source?: string;
 };
 
 function matchEnum(value: string | undefined, allowed: readonly string[], fallback: string | null) {
@@ -103,6 +106,7 @@ export async function POST(request: Request) {
       if (h.city) updateFields.city = h.city;
       if (h.state) updateFields.state = h.state;
       if (h.zip) updateFields.zip = h.zip;
+      if (h.country) updateFields.country = h.country;
 
       const { error } = await supabase.from("companies").update(updateFields).eq("id", existingId);
       if (error) {
@@ -122,10 +126,11 @@ export async function POST(request: Request) {
           city: h.city || null,
           state: h.state || null,
           zip: h.zip || null,
+          country: h.country || null,
           company_type: companyType,
           lifecycle_stage: "Prospect",
           lead_status: leadStatus,
-          source: "google_maps",
+          source: h.source?.trim() || "google_maps",
         })
         .select("id")
         .single();
