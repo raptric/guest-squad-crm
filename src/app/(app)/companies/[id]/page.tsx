@@ -7,25 +7,16 @@ import { AddHiringSignalForm } from "./add-hiring-signal-form";
 import { AddSignalForm } from "./add-signal-form";
 import { AddPainSignalForm } from "./add-pain-signal-form";
 import { AddActivityForm } from "./add-activity-form";
+import { ChannelBadge, channelLabel } from "./channel-badge";
 
 export const dynamic = "force-dynamic";
 
-const TABS = ["overview", "contacts", "signals", "activity"] as const;
-type Tab = (typeof TABS)[number];
-
 export default async function CompanyDetailPage({
   params,
-  searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ tab?: string }>;
 }) {
   const { id } = await params;
-  const { tab: tabParam } = await searchParams;
-  const activeTab: Tab = (TABS as readonly string[]).includes(tabParam ?? "")
-    ? (tabParam as Tab)
-    : "overview";
-
   const supabase = await createClient();
 
   const { data: company } = await supabase
@@ -100,23 +91,12 @@ export default async function CompanyDetailPage({
         .order("detected_at", { ascending: false })
     : { data: null };
 
-  const tabHref = (tab: Tab) => (tab === "overview" ? `/companies/${id}` : `/companies/${id}?tab=${tab}`);
-  const tabLabel: Record<Tab, string> = {
-    overview: "Overview",
-    contacts: `Contacts (${contacts?.length ?? 0})`,
-    signals: "Signals & Ratings",
-    activity: `Activity (${activities?.length ?? 0})`,
-  };
-
   return (
-    <div className="mx-auto w-full max-w-3xl space-y-6 p-8">
+    <div className="mx-auto w-full max-w-7xl space-y-4 p-8">
       <div className="flex items-start justify-between">
-        <div>
-          <Link href="/companies" className="text-sm text-zinc-500 hover:text-zinc-700">
-            Back to Companies
-          </Link>
-          <h1 className="text-2xl font-semibold text-zinc-900">{company.name}</h1>
-        </div>
+        <Link href="/companies" className="text-sm text-zinc-500 hover:text-zinc-700">
+          Back to Companies
+        </Link>
         <Link
           href={`/companies/${id}/edit`}
           className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
@@ -125,123 +105,107 @@ export default async function CompanyDetailPage({
         </Link>
       </div>
 
-      <div className="flex flex-wrap gap-2 text-xs text-zinc-500">
-        <span className="rounded bg-zinc-100 px-2 py-0.5">{company.company_type}</span>
-        <span className="rounded bg-zinc-100 px-2 py-0.5">{company.lifecycle_stage}</span>
-        <span className="rounded bg-zinc-100 px-2 py-0.5">{company.lead_status}</span>
-        {company.prospect_tier && (
-          <span className="rounded bg-zinc-100 px-2 py-0.5">{company.prospect_tier}</span>
-        )}
-        {parentCompany && (
-          <span className="rounded bg-zinc-100 px-2 py-0.5">
-            Part of{" "}
-            <Link href={`/companies/${parentCompany.id}`} className="underline">
-              {parentCompany.name}
-            </Link>
-          </span>
-        )}
-      </div>
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[280px_1fr_320px]">
+        {/* Left: company identity */}
+        <aside className="space-y-4">
+          <div className="rounded-lg border border-zinc-200 bg-white p-5">
+            <h1 className="text-xl font-semibold leading-tight text-zinc-900">{company.name}</h1>
+            <div className="mt-2 flex flex-wrap gap-1.5 text-xs text-zinc-600">
+              <span className="rounded bg-zinc-100 px-2 py-0.5">{company.company_type}</span>
+              <span className="rounded bg-zinc-100 px-2 py-0.5">{company.lifecycle_stage}</span>
+              <span className="rounded bg-zinc-100 px-2 py-0.5">{company.lead_status}</span>
+              {company.prospect_tier && (
+                <span className="rounded bg-zinc-100 px-2 py-0.5">{company.prospect_tier}</span>
+              )}
+            </div>
 
-      <nav className="flex gap-1 border-b border-zinc-200">
-        {TABS.map((tab) => (
-          <Link
-            key={tab}
-            href={tabHref(tab)}
-            className={`px-3 py-2 text-sm font-medium ${
-              activeTab === tab
-                ? "border-b-2 border-zinc-900 text-zinc-900"
-                : "text-zinc-500 hover:text-zinc-700"
-            }`}
-          >
-            {tabLabel[tab]}
-          </Link>
-        ))}
-      </nav>
+            {parentCompany && (
+              <Link
+                href={`/companies/${parentCompany.id}`}
+                className="mt-3 block text-sm text-zinc-600 hover:underline"
+              >
+                Part of <span className="font-medium text-zinc-900">{parentCompany.name}</span>
+              </Link>
+            )}
 
-      {activeTab === "overview" && (
-        <>
-          <section className="space-y-3 rounded-lg border border-zinc-200 bg-white p-6">
-            <h2 className="text-sm font-semibold text-zinc-900">Overview</h2>
-            <dl className="grid grid-cols-2 gap-3 text-sm">
-              <div>
-                <dt className="text-zinc-500">Website</dt>
-                <dd className="text-zinc-900">{company.website ?? "—"}</dd>
-              </div>
-              <div>
-                <dt className="text-zinc-500">Phone</dt>
-                <dd className="text-zinc-900">{company.phone ?? "—"}</dd>
-              </div>
-              <div>
-                <dt className="text-zinc-500">Address</dt>
-                <dd className="text-zinc-900">
-                  {[company.address_line_1, company.address_line_2].filter(Boolean).join(", ") || "—"}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-zinc-500">City / State</dt>
-                <dd className="text-zinc-900">{[company.city, company.state].filter(Boolean).join(", ") || "—"}</dd>
-              </div>
-              <div>
-                <dt className="text-zinc-500">Country / Zip</dt>
-                <dd className="text-zinc-900">{[company.country, company.zip].filter(Boolean).join(", ") || "—"}</dd>
-              </div>
-              <div>
-                <dt className="text-zinc-500">Owner</dt>
-                <dd className="text-zinc-900">{owner?.name ?? "Unassigned"}</dd>
-              </div>
+            <dl className="mt-4 space-y-3 border-t border-zinc-100 pt-4 text-sm">
+              <Field label="Website" value={company.website} />
+              <Field label="Phone" value={company.phone} />
+              <Field
+                label="Address"
+                value={[company.address_line_1, company.address_line_2].filter(Boolean).join(", ")}
+              />
+              <Field label="City / State" value={[company.city, company.state].filter(Boolean).join(", ")} />
+              <Field label="Country / Zip" value={[company.country, company.zip].filter(Boolean).join(", ")} />
+              <Field label="Owner" value={owner?.name ?? "Unassigned"} />
             </dl>
-          </section>
+          </div>
+        </aside>
 
+        {/* Center: property, ratings, portfolio, qualification */}
+        <main className="space-y-4">
           {propertyDetails && (
-            <section className="space-y-3 rounded-lg border border-zinc-200 bg-white p-6">
+            <section className="space-y-4 rounded-lg border border-zinc-200 bg-white p-5">
               <div className="flex items-center justify-between">
                 <h2 className="text-sm font-semibold text-zinc-900">Property Profile</h2>
                 <AddPainSignalForm companyId={Number(id)} />
               </div>
-              <dl className="grid grid-cols-2 gap-3 text-sm">
-                <div>
-                  <dt className="text-zinc-500">Property Type</dt>
-                  <dd className="text-zinc-900">{propertyDetails.property_type ?? "—"}</dd>
-                </div>
-                <div>
-                  <dt className="text-zinc-500">Class</dt>
-                  <dd className="text-zinc-900">{propertyDetails.property_class ?? "—"}</dd>
-                </div>
-                <div>
-                  <dt className="text-zinc-500">Rooms/Units</dt>
-                  <dd className="text-zinc-900">{propertyDetails.rooms_units ?? "—"}</dd>
-                </div>
-                <div>
-                  <dt className="text-zinc-500">Portfolio Role</dt>
-                  <dd className="text-zinc-900">{propertyDetails.portfolio_role ?? "—"}</dd>
-                </div>
-              </dl>
-
-              <div className="border-t border-zinc-100 pt-3">
-                <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">
-                  Pain Signals
-                </h3>
-                {!painSignals?.length ? (
-                  <p className="text-sm text-zinc-500">No pain signals logged yet.</p>
-                ) : (
-                  <ul className="space-y-1 text-sm">
-                    {painSignals.map((p) => (
-                      <li key={p.id} className="flex items-center justify-between">
-                        <span className="text-zinc-900">{p.pain_type}</span>
-                        <span className="text-zinc-500">{p.detected_at}</span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+                <Stat label="Type" value={propertyDetails.property_type} />
+                <Stat label="Class" value={propertyDetails.property_class} />
+                <Stat label="Rooms/Units" value={propertyDetails.rooms_units} />
+                <Stat label="Portfolio Role" value={propertyDetails.portfolio_role} />
               </div>
+
+              {!!painSignals?.length && (
+                <div className="border-t border-zinc-100 pt-3">
+                  <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                    Pain Signals
+                  </h3>
+                  <div className="flex flex-wrap gap-1.5">
+                    {painSignals.map((p) => (
+                      <span key={p.id} className="rounded-full bg-red-50 px-2.5 py-1 text-xs text-red-700">
+                        {p.pain_type}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
             </section>
           )}
 
-          {company.company_type !== "Property" && (
-            <section className="space-y-3 rounded-lg border border-zinc-200 bg-white p-6">
+          <section className="space-y-4 rounded-lg border border-zinc-200 bg-white p-5">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-zinc-900">Ratings &amp; Reviews</h2>
+              <AddRatingForm companyId={Number(id)} />
+            </div>
+            {!ratings?.length ? (
+              <p className="text-sm text-zinc-500">No ratings logged yet.</p>
+            ) : (
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                {ratings.map((r) => (
+                  <div
+                    key={r.channel}
+                    className="flex items-center gap-2 rounded-lg border border-zinc-100 p-3"
+                  >
+                    <ChannelBadge channel={r.channel} />
+                    <div>
+                      <div className="text-sm font-semibold text-zinc-900">{r.rating ?? "—"}</div>
+                      <div className="text-xs text-zinc-500">
+                        {channelLabel(r.channel)} · {r.review_count ?? 0} reviews
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+
+          {!isProperty && (
+            <section className="space-y-3 rounded-lg border border-zinc-200 bg-white p-5">
               <h2 className="text-sm font-semibold text-zinc-900">
-                Portfolio ({children?.length ?? 0} listed{" "}
-                {company.portfolio_size ? `of ${company.portfolio_size} known` : ""})
+                Portfolio ({children?.length ?? 0} listed
+                {company.portfolio_size ? ` of ${company.portfolio_size} known` : ""})
               </h2>
               {!children?.length ? (
                 <p className="text-sm text-zinc-500">No properties linked to this group yet.</p>
@@ -262,7 +226,7 @@ export default async function CompanyDetailPage({
             </section>
           )}
 
-          <section className="space-y-3 rounded-lg border border-zinc-200 bg-white p-6">
+          <section className="space-y-3 rounded-lg border border-zinc-200 bg-white p-5">
             <h2 className="text-sm font-semibold text-zinc-900">Qualification</h2>
             <dl className="space-y-3 text-sm">
               <div>
@@ -275,129 +239,111 @@ export default async function CompanyDetailPage({
               </div>
             </dl>
           </section>
-        </>
-      )}
+        </main>
 
-      {activeTab === "contacts" && (
-        <section className="space-y-4 rounded-lg border border-zinc-200 bg-white p-6">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-zinc-900">Contacts</h2>
-            <AddContactForm companyId={Number(id)} />
-          </div>
-          {!contacts?.length ? (
-            <p className="text-sm text-zinc-500">No contacts yet.</p>
-          ) : (
-            <ul className="divide-y divide-zinc-100 text-sm">
-              {contacts.map((c) => (
-                <li key={c.id} className="space-y-0.5 py-3">
-                  <div className="flex items-center justify-between">
-                    <span className="font-medium text-zinc-900">
-                      {c.first_name} {c.last_name ?? ""}
-                    </span>
-                    <span className="text-zinc-500">{c.contact_role}</span>
-                  </div>
-                  <div className="text-zinc-500">
-                    {[c.job_title, c.email, c.phone].filter(Boolean).join(" · ") || "—"}
-                    {c.decision_maker_level && ` · ${c.decision_maker_level}`}
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-      )}
-
-      {activeTab === "signals" && (
-        <div className="space-y-6">
-          <section className="space-y-4 rounded-lg border border-zinc-200 bg-white p-6">
+        {/* Right: contacts, signals, activity */}
+        <aside className="space-y-4">
+          <section className="space-y-3 rounded-lg border border-zinc-200 bg-white p-5">
             <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-zinc-900">Ratings &amp; Reviews</h2>
-              <AddRatingForm companyId={Number(id)} />
+              <h2 className="text-sm font-semibold text-zinc-900">Contacts ({contacts?.length ?? 0})</h2>
             </div>
-            {!ratings?.length ? (
-              <p className="text-sm text-zinc-500">No ratings logged yet.</p>
-            ) : (
+            <AddContactForm companyId={Number(id)} />
+            {!!contacts?.length && (
               <ul className="divide-y divide-zinc-100 text-sm">
-                {ratings.map((r) => (
-                  <li key={r.channel} className="flex items-center justify-between py-2">
-                    <span className="font-medium text-zinc-900">{r.channel}</span>
-                    <span className="text-zinc-500">
-                      {r.rating ?? "—"} ({r.review_count ?? 0} reviews)
-                    </span>
+                {contacts.map((c) => (
+                  <li key={c.id} className="space-y-0.5 py-3">
+                    <div className="font-medium text-zinc-900">
+                      {c.first_name} {c.last_name ?? ""}
+                    </div>
+                    <div className="text-xs text-zinc-500">{c.contact_role}</div>
+                    <div className="text-xs text-zinc-500">
+                      {[c.job_title, c.email, c.phone].filter(Boolean).join(" · ") || "—"}
+                    </div>
                   </li>
                 ))}
               </ul>
             )}
           </section>
 
-          <section className="space-y-4 rounded-lg border border-zinc-200 bg-white p-6">
+          <section className="space-y-3 rounded-lg border border-zinc-200 bg-white p-5">
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-semibold text-zinc-900">Hiring Signals</h2>
-              <AddHiringSignalForm companyId={Number(id)} />
             </div>
-            {!hiringSignals?.length ? (
-              <p className="text-sm text-zinc-500">No hiring signals logged yet.</p>
-            ) : (
+            <AddHiringSignalForm companyId={Number(id)} />
+            {!!hiringSignals?.length && (
               <ul className="divide-y divide-zinc-100 text-sm">
                 {hiringSignals.map((h) => (
                   <li key={h.id} className="py-2">
                     <div className="flex items-center justify-between">
                       <span className="font-medium text-zinc-900">{h.role ?? h.job_title}</span>
-                      <span className="text-zinc-500">{h.strength}</span>
+                      <span className="text-xs text-zinc-500">{h.strength}</span>
                     </div>
-                    <div className="text-zinc-500">{h.job_title} · {h.detected_at}</div>
+                    <div className="text-xs text-zinc-500">{h.job_title}</div>
                   </li>
                 ))}
               </ul>
             )}
           </section>
 
-          <section className="space-y-4 rounded-lg border border-zinc-200 bg-white p-6">
+          <section className="space-y-3 rounded-lg border border-zinc-200 bg-white p-5">
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-semibold text-zinc-900">Sales Signals</h2>
-              <AddSignalForm companyId={Number(id)} />
             </div>
-            {!signals?.length ? (
-              <p className="text-sm text-zinc-500">No sales signals logged yet.</p>
-            ) : (
+            <AddSignalForm companyId={Number(id)} />
+            {!!signals?.length && (
               <ul className="divide-y divide-zinc-100 text-sm">
                 {signals.map((s) => (
                   <li key={s.id} className="flex items-center justify-between py-2">
                     <span className="font-medium text-zinc-900">{s.signal_type}</span>
-                    <span className="text-zinc-500">{s.strength} · {s.detected_at}</span>
+                    <span className="text-xs text-zinc-500">{s.strength}</span>
                   </li>
                 ))}
               </ul>
             )}
           </section>
-        </div>
-      )}
 
-      {activeTab === "activity" && (
-        <section className="space-y-4 rounded-lg border border-zinc-200 bg-white p-6">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-zinc-900">Activity</h2>
+          <section className="space-y-3 rounded-lg border border-zinc-200 bg-white p-5">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-zinc-900">Activity</h2>
+            </div>
             <AddActivityForm companyId={Number(id)} />
-          </div>
-          {!activities?.length ? (
-            <p className="text-sm text-zinc-500">No activity logged yet.</p>
-          ) : (
-            <ul className="divide-y divide-zinc-100 text-sm">
-              {activities.map((a) => (
-                <li key={a.id} className="py-3">
-                  <div className="flex items-center justify-between">
-                    <span className="font-medium text-zinc-900">{a.activity_type}</span>
-                    <span className="text-zinc-500">
-                      {a.actor_name} · {new Date(a.created_at).toLocaleString()}
-                    </span>
-                  </div>
-                  {a.body && <p className="mt-1 text-zinc-600">{a.body}</p>}
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-      )}
+            {!!activities?.length && (
+              <ul className="divide-y divide-zinc-100 text-sm">
+                {activities.map((a) => (
+                  <li key={a.id} className="py-3">
+                    <div className="flex items-center justify-between">
+                      <span className="font-medium text-zinc-900">{a.activity_type}</span>
+                      <span className="text-xs text-zinc-500">
+                        {new Date(a.created_at).toLocaleDateString()}
+                      </span>
+                    </div>
+                    <div className="text-xs text-zinc-500">{a.actor_name}</div>
+                    {a.body && <p className="mt-1 text-zinc-600">{a.body}</p>}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        </aside>
+      </div>
+    </div>
+  );
+}
+
+function Field({ label, value }: { label: string; value?: string | null }) {
+  return (
+    <div>
+      <dt className="text-xs text-zinc-500">{label}</dt>
+      <dd className="text-zinc-900">{value || "—"}</dd>
+    </div>
+  );
+}
+
+function Stat({ label, value }: { label: string; value?: string | number | null }) {
+  return (
+    <div>
+      <div className="text-xs text-zinc-500">{label}</div>
+      <div className="text-sm font-medium text-zinc-900">{value ?? "—"}</div>
     </div>
   );
 }
