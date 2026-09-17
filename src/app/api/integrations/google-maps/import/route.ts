@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { COMPANY_TYPES, PROPERTY_TYPES, LEAD_STATUSES } from "@/lib/companies/constants";
-import { matchEnum, normalizeDomain } from "@/lib/companies/matching";
+import { matchEnum } from "@/lib/companies/matching";
 
 const MAX_BATCH_SIZE = 500;
 
@@ -50,8 +50,11 @@ export async function POST(request: Request) {
   }
 
   const supabase = createAdminClient();
-  const results: { index: number; status: "created" | "updated" | "skipped"; company_id?: number; error?: string }[] = [];
+  const results: { index: number; status: "created" | "skipped"; company_id?: number; error?: string }[] = [];
 
+  // No dedup here by design -- every incoming record is inserted as its own company.
+  // Chain-affiliated properties often share a generic corporate domain (e.g. "hilton.com"),
+  // so matching by website would incorrectly collapse distinct hotels into one record.
   for (let index = 0; index < hotels.length; index++) {
     const h = hotels[index];
 
@@ -69,87 +72,54 @@ export async function POST(request: Request) {
         ? parseInt(String(h.google_review_count), 10)
         : null;
 
-    // Dedup by website/domain -- the only reliable key this scraper provides.
-    let existingId: number | null = null;
-    if (h.domain) {
-      const normalized = normalizeDomain(h.domain);
-      const { data: candidates } = await supabase
-        .from("companies")
-        .select("id, website")
-        .ilike("website", `%${normalized}%`)
-        .is("deleted_at", null);
+    const { data: created, error } = await supabase
+      .from("companies")
+      .insert({
+        name: h.name,
+        website: h.domain || null,
+        phone: h.phone || null,
+        address_line_1: h.address || null,
+        city: h.city || null,
+        state: h.state || null,
+        zip: h.zip || null,
+        country: h.country || null,
+        company_type: companyType,
+        lifecycle_stage: "Prospect",
+        lead_status: leadStatus,
+        source: h.source?.trim() || "google_maps",
+      })
+      .select("id")
+      .single();
 
-      existingId = candidates?.find((c) => c.website && normalizeDomain(c.website) === normalized)?.id ?? null;
+    if (error || !created) {
+      results.push({ index, status: "skipped", error: error?.message ?? "insert failed" });
+      continue;
     }
+    const companyId = created.id;
 
-    let companyId: number;
-
-    if (existingId) {
-      const updateFields: Record<string, string> = { name: h.name };
-      if (h.phone) updateFields.phone = h.phone;
-      if (h.address) updateFields.address_line_1 = h.address;
-      if (h.city) updateFields.city = h.city;
-      if (h.state) updateFields.state = h.state;
-      if (h.zip) updateFields.zip = h.zip;
-      if (h.country) updateFields.country = h.country;
-
-      const { error } = await supabase.from("companies").update(updateFields).eq("id", existingId);
-      if (error) {
-        results.push({ index, status: "skipped", error: error.message });
-        continue;
-      }
-      companyId = existingId;
-      results.push({ index, status: "updated", company_id: companyId });
-    } else {
-      const { data: created, error } = await supabase
-        .from("companies")
-        .insert({
-          name: h.name,
-          website: h.domain || null,
-          phone: h.phone || null,
-          address_line_1: h.address || null,
-          city: h.city || null,
-          state: h.state || null,
-          zip: h.zip || null,
-          country: h.country || null,
-          company_type: companyType,
-          lifecycle_stage: "Prospect",
-          lead_status: leadStatus,
-          source: h.source?.trim() || "google_maps",
-        })
-        .select("id")
-        .single();
-
-      if (error || !created) {
-        results.push({ index, status: "skipped", error: error?.message ?? "insert failed" });
-        continue;
-      }
-      companyId = created.id;
-
-      if (companyType === "Property") {
-        await supabase.from("property_details").insert({
-          company_id: companyId,
-          property_type: propertyType,
-          portfolio_role: "Independent",
-        });
-      }
-
-      results.push({ index, status: "created", company_id: companyId });
+    if (companyType === "Property") {
+      await supabase.from("property_details").insert({
+        company_id: companyId,
+        property_type: propertyType,
+        portfolio_role: "Independent",
+      });
     }
 
     if (rating !== null || reviewCount !== null) {
-      await supabase
-        .from("company_ratings")
-        .upsert(
-          { company_id: companyId, channel: "google", rating, review_count: reviewCount, captured_at: new Date().toISOString() },
-          { onConflict: "company_id,channel" }
-        );
+      await supabase.from("company_ratings").insert({
+        company_id: companyId,
+        channel: "google",
+        rating,
+        review_count: reviewCount,
+        captured_at: new Date().toISOString(),
+      });
     }
+
+    results.push({ index, status: "created", company_id: companyId });
   }
 
   const summary = {
     created: results.filter((r) => r.status === "created").length,
-    updated: results.filter((r) => r.status === "updated").length,
     skipped: results.filter((r) => r.status === "skipped").length,
     results,
   };

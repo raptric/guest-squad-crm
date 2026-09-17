@@ -62,7 +62,7 @@ needed on either side.
 | gscraper field (their UI label) | JSON property | Maps to | Required |
 |---|---|---|---|
 | Business Name | `name` | `companies.name` | **Yes** |
-| Website / Domain | `domain` | `companies.website` (also the dedup key) | No |
+| Website / Domain | `domain` | `companies.website` | No |
 | Phone | `phone` | `companies.phone` | No |
 | Street Address | `address` | `companies.address_line_1` | No |
 | City | `city` | `companies.city` | No |
@@ -94,34 +94,35 @@ campaign name, etc.), or omit it and it defaults to `google_maps`.
 
 ## What happens on the server
 
+**No deduplication — every valid record is inserted as a new company.** This was tried
+(matching by domain, then by domain+name) and dropped: chain-affiliated properties often
+share one generic corporate domain (e.g. `hilton.com`) across many genuinely different
+physical hotels, which caused real distinct hotels to collide and overwrite each other.
+`companies.website` is not unique at the DB level for the same reason (migration 0005).
+
+**Practical implication: re-sending the same hotel creates a second row.** If gscraper
+re-scrapes the same listing later, that's a duplicate company in the CRM, not an update.
+Handle repeat-avoidance on the gscraper side (e.g. don't re-submit a listing already sent)
+until we have a reliable per-record identifier (see Known Limitations).
+
 For each record:
 
 1. **Validate** — `name` is required. Missing → that record is skipped (with a reason), the
    rest of the batch still processes.
-2. **Dedup by domain** — if `domain` is present, it's normalized (protocol, `www.`, and
-   trailing slash stripped) and compared against existing companies' `website` column the
-   same way. A match **updates** the existing company instead of creating a duplicate.
-   - There's no Google Place ID in gscraper's current data, so domain is the only dedup key.
-     A hotel with no website and a name collision will create a second record — not
-     currently deduped by name+city.
-   - On update, only **non-null incoming fields overwrite existing data** — an empty field
-     in a later scrape never blanks out something already filled in manually.
-3. **Create** (no match) — inserts the company (`source` from the payload or `google_maps`
-   by default, `lifecycle_stage: Prospect`), and if `company_type` is `Property`, also
-   creates its `property_details` row (`portfolio_role: Independent` by default).
-4. **Rating** — if `google_rating` or `google_review_count` is present, upserts a
-   `company_ratings` row for channel `google` (safe to send on every scrape; it just
-   refreshes the existing number).
+2. **Create** — inserts the company (`source` from the payload or `google_maps` by default,
+   `lifecycle_stage: Prospect`), and if `company_type` is `Property`, also creates its
+   `property_details` row (`portfolio_role: Independent` by default).
+3. **Rating** — if `google_rating` or `google_review_count` is present, inserts a
+   `company_ratings` row for channel `google` on the new company.
 
 ## Response
 
 ```json
 {
-  "created": 1,
-  "updated": 1,
+  "created": 2,
   "skipped": 0,
   "results": [
-    { "index": 0, "status": "updated", "company_id": 13 },
+    { "index": 0, "status": "created", "company_id": 13 },
     { "index": 1, "status": "created", "company_id": 23 }
   ]
 }
@@ -162,6 +163,6 @@ curl -X POST https://<your-domain>/api/integrations/google-maps/import \
 - **No rate limiting** — fine for one trusted internal caller; would need real infra
   (e.g. Upstash/Redis) before this is exposed more broadly.
 - **No per-caller API keys** — one shared secret for the whole integration.
-- **No Google Place ID dedup** — gscraper doesn't currently produce one; if it starts to,
-  we should add a `google_place_id` column and prefer it over domain matching (more
-  reliable than a normalized URL string).
+- **No dedup at all, by design** — see above. If repeat-scrapes of the same listing become
+  a real problem, the fix is a `google_place_id` column (Google's own unique per-listing
+  ID, which gscraper doesn't currently send) rather than resurrecting website/name matching.
