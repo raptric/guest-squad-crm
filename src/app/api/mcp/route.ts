@@ -6,14 +6,15 @@ import { matchEnum } from "@/lib/companies/matching";
 import {
   COMPANY_TYPES,
   PROPERTY_TYPES,
-  LEAD_STATUSES,
+  PORTFOLIO_ROLES,
+  LIFECYCLE_STAGES,
   PROSPECT_TIERS,
   RATING_CHANNELS,
   STRENGTH_LEVELS,
   HIRING_SIGNAL_ROLES,
-  OFFER_SERVICES,
-  OFFER_TYPES,
-  AGENT_ALLOWED_LEAD_STATUSES,
+  CONTACT_ROLES,
+  DECISION_MAKER_LEVELS,
+  RESEARCH_OUTCOMES,
 } from "@/lib/companies/constants";
 
 function json(data: unknown) {
@@ -122,9 +123,12 @@ const mcpHandler = createMcpHandler((server) => {
         country: z.string().optional(),
         property_type: z.string().optional(),
         parent_company_id: z.number().int().optional(),
+        // Newly-discovered portfolio siblings should start at "Lead", not the default
+        // "Prospect" a cold/unconfirmed record gets.
+        lifecycle_stage: z.string().optional(),
       },
     },
-    async ({ name, company_type, website, city, state, country, property_type, parent_company_id }) => {
+    async ({ name, company_type, website, city, state, country, property_type, parent_company_id, lifecycle_stage }) => {
       const resolvedType = matchEnum(company_type, COMPANY_TYPES, "Property")!;
 
       let existing = null;
@@ -151,7 +155,7 @@ const mcpHandler = createMcpHandler((server) => {
           country: country || null,
           company_type: resolvedType,
           parent_company_id: parent_company_id || null,
-          lifecycle_stage: "Prospect",
+          lifecycle_stage: matchEnum(lifecycle_stage, LIFECYCLE_STAGES, "Prospect"),
           lead_status: "New",
           source: "codex_research",
         })
@@ -220,6 +224,104 @@ const mcpHandler = createMcpHandler((server) => {
       const { error } = await supabase.from("companies").update(fields).eq("id", company_id);
       if (error) return errorResult(error.message);
       return json({ status: "updated", company_id });
+    }
+  );
+
+  server.registerTool(
+    "update_property_profile",
+    {
+      title: "Update Property Profile",
+      description:
+        "Write property classification discovered during research onto an EXISTING company: property_type/portfolio_role (Properties) and/or portfolio_size (portfolio/group companies). Does not touch address fields -- those are only set at creation, never refreshed automatically.",
+      inputSchema: {
+        company_id: z.number().int(),
+        property_type: z.string().optional(),
+        portfolio_role: z.string().optional(),
+        portfolio_size: z.number().int().optional(),
+      },
+    },
+    async ({ company_id, property_type, portfolio_role, portfolio_size }) => {
+      if (portfolio_size !== undefined) {
+        const { error } = await supabase.from("companies").update({ portfolio_size }).eq("id", company_id);
+        if (error) return errorResult(error.message);
+      }
+
+      if (property_type !== undefined || portfolio_role !== undefined) {
+        const fields: Record<string, string | null> = {};
+        if (property_type !== undefined) fields.property_type = matchEnum(property_type, PROPERTY_TYPES, null);
+        if (portfolio_role !== undefined) fields.portfolio_role = matchEnum(portfolio_role, PORTFOLIO_ROLES, null);
+
+        const { error, count } = await supabase
+          .from("property_details")
+          .update(fields, { count: "exact" })
+          .eq("company_id", company_id);
+        if (error) return errorResult(error.message);
+        if (count === 0) return errorResult("This company has no property profile -- property_type/portfolio_role only apply to Properties");
+      }
+
+      return json({ status: "updated", company_id });
+    }
+  );
+
+  server.registerTool(
+    "find_or_create_contact",
+    {
+      title: "Find or Create Contact",
+      description:
+        "Find a contact by verified email, or create one if it doesn't exist, associated with the given company. Only use this with a real, verified email address you found during research -- never create a contact for a generic front-desk line or an unverified/guessed email.",
+      inputSchema: {
+        company_id: z.number().int(),
+        email: z.string().email(),
+        first_name: z.string(),
+        last_name: z.string().optional(),
+        job_title: z.string().optional(),
+        phone: z.string().optional(),
+        linkedin_url: z.string().optional(),
+        contact_role: z.string().optional(),
+        decision_maker_level: z.string().optional(),
+      },
+    },
+    async ({ company_id, email, first_name, last_name, job_title, phone, linkedin_url, contact_role, decision_maker_level }) => {
+      const { data: existing } = await supabase
+        .from("contacts")
+        .select("id")
+        .ilike("email", email)
+        .is("deleted_at", null)
+        .limit(1)
+        .single();
+
+      if (existing) {
+        // Only overwrite fields this call actually provided -- an omitted optional field
+        // must never blank out something a previous call already set.
+        const updateFields: Record<string, string | null> = { first_name, email };
+        if (last_name !== undefined) updateFields.last_name = last_name;
+        if (job_title !== undefined) updateFields.job_title = job_title;
+        if (phone !== undefined) updateFields.phone = phone;
+        if (linkedin_url !== undefined) updateFields.linkedin_url = linkedin_url;
+        if (contact_role !== undefined) updateFields.contact_role = matchEnum(contact_role, CONTACT_ROLES, null);
+        if (decision_maker_level !== undefined)
+          updateFields.decision_maker_level = matchEnum(decision_maker_level, DECISION_MAKER_LEVELS, null);
+
+        const { error } = await supabase.from("contacts").update(updateFields).eq("id", existing.id);
+        if (error) return errorResult(error.message);
+        return json({ status: "updated", contact_id: existing.id });
+      }
+
+      const fields = {
+        company_id,
+        first_name,
+        last_name: last_name || null,
+        email,
+        job_title: job_title || null,
+        phone: phone || null,
+        linkedin_url: linkedin_url || null,
+        contact_role: matchEnum(contact_role, CONTACT_ROLES, null),
+        decision_maker_level: matchEnum(decision_maker_level, DECISION_MAKER_LEVELS, null),
+      };
+
+      const { data: created, error } = await supabase.from("contacts").insert(fields).select("id").single();
+      if (error || !created) return errorResult(error?.message ?? "Failed to create contact");
+      return json({ status: "created", contact_id: created.id });
     }
   );
 
@@ -321,41 +423,9 @@ const mcpHandler = createMcpHandler((server) => {
     }
   );
 
-  server.registerTool(
-    "add_offer_recommendation",
-    {
-      title: "Add Offer Recommendation",
-      description: `Recommend which GuestSquad service to pitch. Services: ${OFFER_SERVICES.join(", ")}. Type is Primary or Secondary -- only one Primary per company is allowed.`,
-      inputSchema: {
-        company_id: z.number().int(),
-        service: z.string(),
-        type: z.enum(OFFER_TYPES),
-        rationale: z.string().optional(),
-      },
-    },
-    async ({ company_id, service, type, rationale }) => {
-      const resolvedService = matchEnum(service, OFFER_SERVICES, null);
-      if (!resolvedService) return errorResult(`Invalid service. Allowed: ${OFFER_SERVICES.join(", ")}`);
-
-      const { error } = await supabase.from("offer_recommendations").insert({
-        company_id,
-        service: resolvedService,
-        type,
-        rationale: rationale || null,
-      });
-
-      if (error) {
-        if (error.code === "23505") {
-          const message = error.message.includes("one_primary")
-            ? "This company already has a Primary recommendation. Use a different company or ask a human to remove the existing one."
-            : "This service has already been recommended for this company.";
-          return errorResult(message);
-        }
-        return errorResult(error.message);
-      }
-      return json({ status: "logged", company_id, service: resolvedService, type });
-    }
-  );
+  // add_offer_recommendation is intentionally NOT exposed here: Primary/Secondary sales
+  // angle fields stay SDR-managed until the logic mapping research evidence to a specific
+  // play is reviewed and approved.
 
   server.registerTool(
     "log_activity",
@@ -378,19 +448,24 @@ const mcpHandler = createMcpHandler((server) => {
   );
 
   server.registerTool(
-    "transition_lead_status",
+    "set_research_outcome",
     {
-      title: "Transition Lead Status",
-      description: `Move a company's lead_status forward. Restricted to: ${AGENT_ALLOWED_LEAD_STATUSES.join(", ")} -- anything past that (Qualified, Ready for Outreach, etc.) is a human decision.`,
-      inputSchema: { company_id: z.number().int(), to_status: z.enum(AGENT_ALLOWED_LEAD_STATUSES) },
+      title: "Set Research Outcome",
+      description:
+        "Record the outcome of researching this company, following the standard rules: " +
+        "Qualified sets lead_status=Qualified AND advances lifecycle_stage to 'Sales Qualified Lead'. " +
+        "Needs Review (incomplete research) and Unqualified (disqualified) set lead_status only -- " +
+        "lifecycle_stage is left unchanged. Use 'Researching' when starting work on a lead. " +
+        "Anything past Qualified (Ready for Outreach, Engaged, etc.) is a human decision, not made here.",
+      inputSchema: { company_id: z.number().int(), outcome: z.enum(RESEARCH_OUTCOMES) },
     },
-    async ({ company_id, to_status }) => {
-      if (!matchEnum(to_status, LEAD_STATUSES, null)) {
-        return errorResult(`Invalid status "${to_status}"`);
-      }
-      const { error } = await supabase.from("companies").update({ lead_status: to_status }).eq("id", company_id);
+    async ({ company_id, outcome }) => {
+      const fields: Record<string, string> = { lead_status: outcome };
+      if (outcome === "Qualified") fields.lifecycle_stage = "Sales Qualified Lead";
+
+      const { error } = await supabase.from("companies").update(fields).eq("id", company_id);
       if (error) return errorResult(error.message);
-      return json({ status: "updated", company_id, lead_status: to_status });
+      return json({ status: "updated", company_id, ...fields });
     }
   );
 });

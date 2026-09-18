@@ -162,6 +162,8 @@ export const OFFER_SERVICES = [
 
 export const OFFER_TYPES = ["Primary", "Secondary"] as const;
 
-// The research agent (MCP) can only move a lead into these states -- everything from
-// Qualified onward (Ready for Outreach, Engaged, etc.) stays a human decision.
-export const AGENT_ALLOWED_LEAD_STATUSES = ["Researching", "Needs Review", "Unqualified"] as const;
+// The four outcomes a research pass can end in (matches the proven HubSpot writeback
+// rules). Qualified is the only one that also advances lifecycle_stage -- Needs Review and
+// Unqualified leave it where it was. Ready for Outreach and everything past Qualified
+// stays a human decision, made outside the research tool.
+export const RESEARCH_OUTCOMES = ["Researching", "Qualified", "Needs Review", "Unqualified"] as const;
