@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { COMPANY_TYPES, PROPERTY_TYPES, LEAD_STATUSES } from "@/lib/companies/constants";
+import { COMPANY_TYPES, PROPERTY_TYPES } from "@/lib/companies/constants";
 import { matchEnum } from "@/lib/companies/matching";
+import { fetchPicklistValues } from "@/lib/picklists";
 
 const MAX_BATCH_SIZE = 500;
 
@@ -50,6 +51,7 @@ export async function POST(request: Request) {
   }
 
   const supabase = createAdminClient();
+  const validLeadStatuses = await fetchPicklistValues(supabase, "lead_status");
   const results: { index: number; status: "created" | "skipped"; company_id?: number; error?: string }[] = [];
 
   // No dedup here by design -- every incoming record is inserted as its own company.
@@ -65,7 +67,7 @@ export async function POST(request: Request) {
 
     const companyType = matchEnum(h.gs_company_type, COMPANY_TYPES, "Property")!;
     const propertyType = matchEnum(h.gs_property_type, PROPERTY_TYPES, null);
-    const leadStatus = matchEnum(h.hs_lead_status, LEAD_STATUSES, "New")!;
+    const leadStatus = matchEnum(h.hs_lead_status, validLeadStatuses, "New")!;
     const rating = h.google_rating !== undefined && h.google_rating !== "" ? parseFloat(String(h.google_rating)) : null;
     const reviewCount =
       h.google_review_count !== undefined && h.google_review_count !== ""
@@ -84,7 +86,7 @@ export async function POST(request: Request) {
         zip: h.zip || null,
         country: h.country || null,
         company_type: companyType,
-        lifecycle_stage: "Prospect",
+        lifecycle_stage: "Lead",
         lead_status: leadStatus,
         source: h.source?.trim() || "google_maps",
       })

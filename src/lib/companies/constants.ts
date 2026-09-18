@@ -8,27 +8,8 @@ export const COMPANY_TYPES = [
   "Other",
 ] as const;
 
-export const LIFECYCLE_STAGES = [
-  "Prospect",
-  "Lead",
-  "Sales Qualified Lead",
-  "Opportunity",
-  "Customer",
-  "Former Customer",
-] as const;
-
-export const LEAD_STATUSES = [
-  "New",
-  "Researching",
-  "Needs Review",
-  "Qualified",
-  "Decision Maker Needed",
-  "Ready for Outreach",
-  "Outreach Active",
-  "Engaged",
-  "Nurture",
-  "Unqualified",
-] as const;
+// lead_status and lifecycle_stage are no longer fixed here -- they're admin-editable via
+// /settings (picklist_values table), fetched with getPicklistValues(). See lib/picklists.ts.
 
 export const PROSPECT_TIERS = ["Tier 1", "Tier 2", "Tier 3", "Do Not Pursue"] as const;
 
@@ -162,8 +143,7 @@ export const OFFER_SERVICES = [
 
 export const OFFER_TYPES = ["Primary", "Secondary"] as const;
 
-// The four outcomes a research pass can end in (matches the proven HubSpot writeback
-// rules). Qualified is the only one that also advances lifecycle_stage -- Needs Review and
-// Unqualified leave it where it was. Ready for Outreach and everything past Qualified
-// stays a human decision, made outside the research tool.
-export const RESEARCH_OUTCOMES = ["Researching", "Qualified", "Needs Review", "Unqualified"] as const;
+// The three outcomes a research pass can end in, matching the current lead_status picklist
+// (New / Needs Review / Qualified / DisQualified -- New is the starting state, not a research
+// outcome). Qualified is the only one that also advances lifecycle_stage to "Sales Qualified".
+export const RESEARCH_OUTCOMES = ["Qualified", "Needs Review", "DisQualified"] as const;

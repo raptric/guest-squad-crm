@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { getPicklistValues } from "@/lib/picklists";
 import { CompanyForm, type CompanyInitialValues } from "../../company-form";
 
 export default async function EditCompanyPage({
@@ -11,7 +12,7 @@ export default async function EditCompanyPage({
   const { id } = await params;
   const supabase = await createClient();
 
-  const [{ data: company }, { data: users }] = await Promise.all([
+  const [{ data: company }, { data: users }, lifecycleStages, leadStatuses] = await Promise.all([
     supabase
       .from("companies")
       .select(
@@ -24,9 +25,21 @@ export default async function EditCompanyPage({
       .is("deleted_at", null)
       .single(),
     supabase.from("users").select("id, name").order("name"),
+    getPicklistValues("lifecycle_stage"),
+    getPicklistValues("lead_status"),
   ]);
 
   if (!company) notFound();
+
+  // If this record still has a legacy value no longer in the active picklist, keep it
+  // selectable (as its current value) instead of silently switching the dropdown to the
+  // first active option.
+  const lifecycleStageOptions = lifecycleStages.includes(company.lifecycle_stage)
+    ? lifecycleStages
+    : [company.lifecycle_stage, ...lifecycleStages];
+  const leadStatusOptions = leadStatuses.includes(company.lead_status)
+    ? leadStatuses
+    : [company.lead_status, ...leadStatuses];
 
   const { data: propertyDetails } =
     company.company_type === "Property"
@@ -71,7 +84,13 @@ export default async function EditCompanyPage({
         </Link>
       </div>
 
-      <CompanyForm users={users ?? []} initialValues={initialValues} companyId={Number(id)} />
+      <CompanyForm
+        users={users ?? []}
+        lifecycleStages={lifecycleStageOptions}
+        leadStatuses={leadStatusOptions}
+        initialValues={initialValues}
+        companyId={Number(id)}
+      />
     </div>
   );
 }

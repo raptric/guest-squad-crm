@@ -3,11 +3,11 @@ import { createMcpHandler } from "mcp-handler";
 import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { matchEnum } from "@/lib/companies/matching";
+import { fetchPicklistValues } from "@/lib/picklists";
 import {
   COMPANY_TYPES,
   PROPERTY_TYPES,
   PORTFOLIO_ROLES,
-  LIFECYCLE_STAGES,
   PROSPECT_TIERS,
   RATING_CHANNELS,
   STRENGTH_LEVELS,
@@ -130,6 +130,7 @@ const mcpHandler = createMcpHandler((server) => {
     },
     async ({ name, company_type, website, city, state, country, property_type, parent_company_id, lifecycle_stage }) => {
       const resolvedType = matchEnum(company_type, COMPANY_TYPES, "Property")!;
+      const validLifecycleStages = await fetchPicklistValues(supabase, "lifecycle_stage");
 
       let existing = null;
       if (website) {
@@ -155,7 +156,7 @@ const mcpHandler = createMcpHandler((server) => {
           country: country || null,
           company_type: resolvedType,
           parent_company_id: parent_company_id || null,
-          lifecycle_stage: matchEnum(lifecycle_stage, LIFECYCLE_STAGES, "Prospect"),
+          lifecycle_stage: matchEnum(lifecycle_stage, validLifecycleStages, "Lead"),
           lead_status: "New",
           source: "codex_research",
         })
@@ -453,15 +454,15 @@ const mcpHandler = createMcpHandler((server) => {
       title: "Set Research Outcome",
       description:
         "Record the outcome of researching this company, following the standard rules: " +
-        "Qualified sets lead_status=Qualified AND advances lifecycle_stage to 'Sales Qualified Lead'. " +
-        "Needs Review (incomplete research) and Unqualified (disqualified) set lead_status only -- " +
-        "lifecycle_stage is left unchanged. Use 'Researching' when starting work on a lead. " +
-        "Anything past Qualified (Ready for Outreach, Engaged, etc.) is a human decision, not made here.",
+        "Qualified sets lead_status=Qualified AND advances lifecycle_stage to 'Sales Qualified'. " +
+        "Needs Review (incomplete research) and DisQualified set lead_status only -- " +
+        "lifecycle_stage is left unchanged. Anything past Qualified (Opportunity, Customer, " +
+        "etc.) is a human decision, not made here.",
       inputSchema: { company_id: z.number().int(), outcome: z.enum(RESEARCH_OUTCOMES) },
     },
     async ({ company_id, outcome }) => {
       const fields: Record<string, string> = { lead_status: outcome };
-      if (outcome === "Qualified") fields.lifecycle_stage = "Sales Qualified Lead";
+      if (outcome === "Qualified") fields.lifecycle_stage = "Sales Qualified";
 
       const { error } = await supabase.from("companies").update(fields).eq("id", company_id);
       if (error) return errorResult(error.message);

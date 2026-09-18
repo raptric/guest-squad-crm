@@ -25,6 +25,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <NavLink href="/companies">Companies</NavLink>
           <NavLink href="/contacts">Contacts</NavLink>
           {user?.role === "super_admin" && <NavLink href="/users">Users</NavLink>}
+          {user?.role === "super_admin" && <NavLink href="/settings">Settings</NavLink>}
         </nav>
 
         <div className="border-t border-zinc-200 p-3">

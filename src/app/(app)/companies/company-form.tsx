@@ -4,8 +4,6 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   COMPANY_TYPES,
-  LIFECYCLE_STAGES,
-  LEAD_STATUSES,
   PROSPECT_TIERS,
   PROPERTY_TYPES,
   PROPERTY_CLASSES,
@@ -42,10 +40,14 @@ export type CompanyInitialValues = {
 
 export function CompanyForm({
   users,
+  lifecycleStages,
+  leadStatuses,
   initialValues,
   companyId,
 }: {
   users: UserOption[];
+  lifecycleStages: string[];
+  leadStatuses: string[];
   initialValues?: CompanyInitialValues;
   companyId?: number;
 }) {
@@ -210,13 +212,13 @@ export function CompanyForm({
           <SelectField
             label="Lifecycle Stage"
             name="lifecycle_stage"
-            options={LIFECYCLE_STAGES}
+            options={lifecycleStages}
             defaultValue={initialValues?.lifecycle_stage}
           />
           <SelectField
             label="Lead Status"
             name="lead_status"
-            options={LEAD_STATUSES}
+            options={leadStatuses}
             defaultValue={initialValues?.lead_status}
           />
         </div>
