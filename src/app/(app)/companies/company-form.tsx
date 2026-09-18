@@ -2,13 +2,6 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import {
-  COMPANY_TYPES,
-  PROSPECT_TIERS,
-  PROPERTY_TYPES,
-  PROPERTY_CLASSES,
-  PORTFOLIO_ROLES,
-} from "@/lib/companies/constants";
 import { ParentCompanyCombobox } from "./parent-company-combobox";
 
 type UserOption = { id: number; name: string };
@@ -42,18 +35,28 @@ export function CompanyForm({
   users,
   lifecycleStages,
   leadStatuses,
+  companyTypes,
+  propertyTypes,
+  propertyClasses,
+  portfolioRoles,
+  prospectTiers,
   initialValues,
   companyId,
 }: {
   users: UserOption[];
   lifecycleStages: string[];
   leadStatuses: string[];
+  companyTypes: string[];
+  propertyTypes: string[];
+  propertyClasses: string[];
+  portfolioRoles: string[];
+  prospectTiers: string[];
   initialValues?: CompanyInitialValues;
   companyId?: number;
 }) {
   const router = useRouter();
   const isEdit = companyId !== undefined;
-  const [companyType, setCompanyType] = useState<string>(initialValues?.company_type ?? COMPANY_TYPES[0]);
+  const [companyType, setCompanyType] = useState<string>(initialValues?.company_type ?? companyTypes[0]);
   const [hasParent, setHasParent] = useState(Boolean(initialValues?.parent));
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -104,7 +107,7 @@ export function CompanyForm({
             onChange={(e) => setCompanyType(e.target.value)}
             className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm"
           >
-            {COMPANY_TYPES.map((t) => (
+            {companyTypes.map((t) => (
               <option key={t} value={t}>
                 {t}
               </option>
@@ -141,7 +144,7 @@ export function CompanyForm({
               <SelectField
                 label="Relationship to Portfolio"
                 name="portfolio_role"
-                options={PORTFOLIO_ROLES.filter((r) => r !== "Independent")}
+                options={portfolioRoles.filter((r) => r !== "Independent")}
                 defaultValue={initialValues?.portfolio_role ?? undefined}
               />
             )}
@@ -182,14 +185,14 @@ export function CompanyForm({
             <SelectField
               label="Property Type"
               name="property_type"
-              options={PROPERTY_TYPES}
+              options={propertyTypes}
               allowEmpty
               defaultValue={initialValues?.property_type ?? undefined}
             />
             <SelectField
               label="Class"
               name="property_class"
-              options={PROPERTY_CLASSES}
+              options={propertyClasses}
               allowEmpty
               defaultValue={initialValues?.property_class ?? undefined}
             />
@@ -226,7 +229,7 @@ export function CompanyForm({
         <SelectField
           label="Prospect Tier"
           name="prospect_tier"
-          options={PROSPECT_TIERS}
+          options={prospectTiers}
           allowEmpty
           defaultValue={initialValues?.prospect_tier ?? undefined}
         />

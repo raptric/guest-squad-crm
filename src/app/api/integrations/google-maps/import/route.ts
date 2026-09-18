@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { COMPANY_TYPES, PROPERTY_TYPES } from "@/lib/companies/constants";
 import { matchEnum } from "@/lib/companies/matching";
 import { fetchPicklistValues } from "@/lib/picklists";
 
@@ -51,7 +50,11 @@ export async function POST(request: Request) {
   }
 
   const supabase = createAdminClient();
-  const validLeadStatuses = await fetchPicklistValues(supabase, "lead_status");
+  const [validLeadStatuses, validCompanyTypes, validPropertyTypes] = await Promise.all([
+    fetchPicklistValues(supabase, "lead_status"),
+    fetchPicklistValues(supabase, "company_type"),
+    fetchPicklistValues(supabase, "property_type"),
+  ]);
   const results: { index: number; status: "created" | "skipped"; company_id?: number; error?: string }[] = [];
 
   // No dedup here by design -- every incoming record is inserted as its own company.
@@ -65,8 +68,8 @@ export async function POST(request: Request) {
       continue;
     }
 
-    const companyType = matchEnum(h.gs_company_type, COMPANY_TYPES, "Property")!;
-    const propertyType = matchEnum(h.gs_property_type, PROPERTY_TYPES, null);
+    const companyType = matchEnum(h.gs_company_type, validCompanyTypes, "Property")!;
+    const propertyType = matchEnum(h.gs_property_type, validPropertyTypes, null);
     const leadStatus = matchEnum(h.hs_lead_status, validLeadStatuses, "New")!;
     const rating = h.google_rating !== undefined && h.google_rating !== "" ? parseFloat(String(h.google_rating)) : null;
     const reviewCount =

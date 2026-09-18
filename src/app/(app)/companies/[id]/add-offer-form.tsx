@@ -1,7 +1,10 @@
-import { OFFER_SERVICES, OFFER_TYPES } from "@/lib/companies/constants";
+import { OFFER_TYPES } from "@/lib/companies/constants";
+import { getPicklistValues } from "@/lib/picklists";
 import { InlineAddForm } from "./inline-add-form";
 
-export function AddOfferForm({ companyId }: { companyId: number }) {
+export async function AddOfferForm({ companyId }: { companyId: number }) {
+  const offerServices = await getPicklistValues("offer_service");
+
   return (
     <InlineAddForm
       buttonLabel="Add Recommendation"
@@ -11,7 +14,7 @@ export function AddOfferForm({ companyId }: { companyId: number }) {
       <div className="grid grid-cols-2 gap-3">
         <select name="service" required defaultValue="" className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm">
           <option value="" disabled>Service</option>
-          {OFFER_SERVICES.map((s) => (
+          {offerServices.map((s) => (
             <option key={s} value={s}>{s}</option>
           ))}
         </select>

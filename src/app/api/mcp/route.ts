@@ -4,18 +4,7 @@ import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { matchEnum } from "@/lib/companies/matching";
 import { fetchPicklistValues } from "@/lib/picklists";
-import {
-  COMPANY_TYPES,
-  PROPERTY_TYPES,
-  PORTFOLIO_ROLES,
-  PROSPECT_TIERS,
-  RATING_CHANNELS,
-  STRENGTH_LEVELS,
-  HIRING_SIGNAL_ROLES,
-  CONTACT_ROLES,
-  DECISION_MAKER_LEVELS,
-  RESEARCH_OUTCOMES,
-} from "@/lib/companies/constants";
+import { RATING_CHANNELS, RESEARCH_OUTCOMES } from "@/lib/companies/constants";
 
 function json(data: unknown) {
   return { content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }] };
@@ -129,8 +118,12 @@ const mcpHandler = createMcpHandler((server) => {
       },
     },
     async ({ name, company_type, website, city, state, country, property_type, parent_company_id, lifecycle_stage }) => {
-      const resolvedType = matchEnum(company_type, COMPANY_TYPES, "Property")!;
-      const validLifecycleStages = await fetchPicklistValues(supabase, "lifecycle_stage");
+      const [validCompanyTypes, validPropertyTypes, validLifecycleStages] = await Promise.all([
+        fetchPicklistValues(supabase, "company_type"),
+        fetchPicklistValues(supabase, "property_type"),
+        fetchPicklistValues(supabase, "lifecycle_stage"),
+      ]);
+      const resolvedType = matchEnum(company_type, validCompanyTypes, "Property")!;
 
       let existing = null;
       if (website) {
@@ -168,7 +161,7 @@ const mcpHandler = createMcpHandler((server) => {
       if (resolvedType === "Property") {
         await supabase.from("property_details").insert({
           company_id: created.id,
-          property_type: matchEnum(property_type, PROPERTY_TYPES, null),
+          property_type: matchEnum(property_type, validPropertyTypes, null),
           portfolio_role: parent_company_id ? "Portfolio Property" : "Independent",
         });
       }
@@ -217,8 +210,9 @@ const mcpHandler = createMcpHandler((server) => {
       if (qualification_summary !== undefined) fields.qualification_summary = qualification_summary;
       if (sdr_signal_summary !== undefined) fields.sdr_signal_summary = sdr_signal_summary;
       if (prospect_tier !== undefined) {
-        const tier = matchEnum(prospect_tier, PROSPECT_TIERS, null);
-        if (!tier) return errorResult(`Invalid prospect_tier. Allowed: ${PROSPECT_TIERS.join(", ")}`);
+        const validProspectTiers = await fetchPicklistValues(supabase, "prospect_tier");
+        const tier = matchEnum(prospect_tier, validProspectTiers, null);
+        if (!tier) return errorResult(`Invalid prospect_tier. Allowed: ${validProspectTiers.join(", ")}`);
         fields.prospect_tier = tier;
       }
 
@@ -248,9 +242,13 @@ const mcpHandler = createMcpHandler((server) => {
       }
 
       if (property_type !== undefined || portfolio_role !== undefined) {
+        const [validPropertyTypes, validPortfolioRoles] = await Promise.all([
+          fetchPicklistValues(supabase, "property_type"),
+          fetchPicklistValues(supabase, "portfolio_role"),
+        ]);
         const fields: Record<string, string | null> = {};
-        if (property_type !== undefined) fields.property_type = matchEnum(property_type, PROPERTY_TYPES, null);
-        if (portfolio_role !== undefined) fields.portfolio_role = matchEnum(portfolio_role, PORTFOLIO_ROLES, null);
+        if (property_type !== undefined) fields.property_type = matchEnum(property_type, validPropertyTypes, null);
+        if (portfolio_role !== undefined) fields.portfolio_role = matchEnum(portfolio_role, validPortfolioRoles, null);
 
         const { error, count } = await supabase
           .from("property_details")
@@ -283,6 +281,10 @@ const mcpHandler = createMcpHandler((server) => {
       },
     },
     async ({ company_id, email, first_name, last_name, job_title, phone, linkedin_url, contact_role, decision_maker_level }) => {
+      const [validContactRoles, validDecisionMakerLevels] = await Promise.all([
+        fetchPicklistValues(supabase, "contact_role"),
+        fetchPicklistValues(supabase, "decision_maker_level"),
+      ]);
       const { data: existing } = await supabase
         .from("contacts")
         .select("id")
@@ -299,9 +301,9 @@ const mcpHandler = createMcpHandler((server) => {
         if (job_title !== undefined) updateFields.job_title = job_title;
         if (phone !== undefined) updateFields.phone = phone;
         if (linkedin_url !== undefined) updateFields.linkedin_url = linkedin_url;
-        if (contact_role !== undefined) updateFields.contact_role = matchEnum(contact_role, CONTACT_ROLES, null);
+        if (contact_role !== undefined) updateFields.contact_role = matchEnum(contact_role, validContactRoles, null);
         if (decision_maker_level !== undefined)
-          updateFields.decision_maker_level = matchEnum(decision_maker_level, DECISION_MAKER_LEVELS, null);
+          updateFields.decision_maker_level = matchEnum(decision_maker_level, validDecisionMakerLevels, null);
 
         const { error } = await supabase.from("contacts").update(updateFields).eq("id", existing.id);
         if (error) return errorResult(error.message);
@@ -316,8 +318,8 @@ const mcpHandler = createMcpHandler((server) => {
         job_title: job_title || null,
         phone: phone || null,
         linkedin_url: linkedin_url || null,
-        contact_role: matchEnum(contact_role, CONTACT_ROLES, null),
-        decision_maker_level: matchEnum(decision_maker_level, DECISION_MAKER_LEVELS, null),
+        contact_role: matchEnum(contact_role, validContactRoles, null),
+        decision_maker_level: matchEnum(decision_maker_level, validDecisionMakerLevels, null),
       };
 
       const { data: created, error } = await supabase.from("contacts").insert(fields).select("id").single();
@@ -366,10 +368,11 @@ const mcpHandler = createMcpHandler((server) => {
       },
     },
     async ({ company_id, signal_type, strength, source_url }) => {
+      const validStrengthLevels = await fetchPicklistValues(supabase, "strength");
       const { error } = await supabase.from("company_signals").insert({
         company_id,
         signal_type,
-        strength: matchEnum(strength, STRENGTH_LEVELS, null),
+        strength: matchEnum(strength, validStrengthLevels, null),
         source_url: source_url || null,
       });
       if (error) return errorResult(error.message);
@@ -381,7 +384,8 @@ const mcpHandler = createMcpHandler((server) => {
     "add_hiring_signal",
     {
       title: "Add Hiring Signal",
-      description: `Log a detected job posting for this company. Roles: ${HIRING_SIGNAL_ROLES.join(", ")}.`,
+      description:
+        "Log a detected job posting for this company. Valid roles are managed in the admin Settings page -- pass your best match and it will be normalized.",
       inputSchema: {
         company_id: z.number().int(),
         role: z.string().optional(),
@@ -391,11 +395,15 @@ const mcpHandler = createMcpHandler((server) => {
       },
     },
     async ({ company_id, role, job_title, strength, source_url }) => {
+      const [validHiringSignalRoles, validStrengthLevels] = await Promise.all([
+        fetchPicklistValues(supabase, "hiring_signal_role"),
+        fetchPicklistValues(supabase, "strength"),
+      ]);
       const { error } = await supabase.from("company_hiring_signals").insert({
         company_id,
-        role: matchEnum(role, HIRING_SIGNAL_ROLES, null),
+        role: matchEnum(role, validHiringSignalRoles, null),
         job_title: job_title || null,
-        strength: matchEnum(strength, STRENGTH_LEVELS, null),
+        strength: matchEnum(strength, validStrengthLevels, null),
         source_url: source_url || null,
       });
       if (error) return errorResult(error.message);

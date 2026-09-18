@@ -1,7 +1,10 @@
-import { COMPANY_SIGNAL_TYPES, STRENGTH_LEVELS } from "@/lib/companies/constants";
+import { COMPANY_SIGNAL_TYPES } from "@/lib/companies/constants";
+import { getPicklistValues } from "@/lib/picklists";
 import { InlineAddForm } from "./inline-add-form";
 
-export function AddSignalForm({ companyId }: { companyId: number }) {
+export async function AddSignalForm({ companyId }: { companyId: number }) {
+  const strengthLevels = await getPicklistValues("strength");
+
   return (
     <InlineAddForm
       buttonLabel="Add Sales Signal"
@@ -17,7 +20,7 @@ export function AddSignalForm({ companyId }: { companyId: number }) {
         </select>
         <select name="strength" defaultValue="" className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm">
           <option value="">Strength —</option>
-          {STRENGTH_LEVELS.map((s) => (
+          {strengthLevels.map((s) => (
             <option key={s} value={s}>{s}</option>
           ))}
         </select>

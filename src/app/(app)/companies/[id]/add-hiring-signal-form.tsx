@@ -1,7 +1,12 @@
-import { HIRING_SIGNAL_ROLES, STRENGTH_LEVELS } from "@/lib/companies/constants";
+import { getPicklistValues } from "@/lib/picklists";
 import { InlineAddForm } from "./inline-add-form";
 
-export function AddHiringSignalForm({ companyId }: { companyId: number }) {
+export async function AddHiringSignalForm({ companyId }: { companyId: number }) {
+  const [hiringSignalRoles, strengthLevels] = await Promise.all([
+    getPicklistValues("hiring_signal_role"),
+    getPicklistValues("strength"),
+  ]);
+
   return (
     <InlineAddForm
       buttonLabel="Add Hiring Signal"
@@ -11,13 +16,13 @@ export function AddHiringSignalForm({ companyId }: { companyId: number }) {
       <div className="grid grid-cols-2 gap-3">
         <select name="role" defaultValue="" className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm">
           <option value="">Role —</option>
-          {HIRING_SIGNAL_ROLES.map((r) => (
+          {hiringSignalRoles.map((r) => (
             <option key={r} value={r}>{r}</option>
           ))}
         </select>
         <select name="strength" defaultValue="" className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm">
           <option value="">Strength —</option>
-          {STRENGTH_LEVELS.map((s) => (
+          {strengthLevels.map((s) => (
             <option key={s} value={s}>{s}</option>
           ))}
         </select>

@@ -5,10 +5,24 @@ import { CompanyForm } from "../company-form";
 
 export default async function NewCompanyPage() {
   const supabase = await createClient();
-  const [{ data: users }, lifecycleStages, leadStatuses] = await Promise.all([
+  const [
+    { data: users },
+    lifecycleStages,
+    leadStatuses,
+    companyTypes,
+    propertyTypes,
+    propertyClasses,
+    portfolioRoles,
+    prospectTiers,
+  ] = await Promise.all([
     supabase.from("users").select("id, name").order("name"),
     getPicklistValues("lifecycle_stage"),
     getPicklistValues("lead_status"),
+    getPicklistValues("company_type"),
+    getPicklistValues("property_type"),
+    getPicklistValues("property_class"),
+    getPicklistValues("portfolio_role"),
+    getPicklistValues("prospect_tier"),
   ]);
 
   return (
@@ -20,7 +34,16 @@ export default async function NewCompanyPage() {
         </Link>
       </div>
 
-      <CompanyForm users={users ?? []} lifecycleStages={lifecycleStages} leadStatuses={leadStatuses} />
+      <CompanyForm
+        users={users ?? []}
+        lifecycleStages={lifecycleStages}
+        leadStatuses={leadStatuses}
+        companyTypes={companyTypes}
+        propertyTypes={propertyTypes}
+        propertyClasses={propertyClasses}
+        portfolioRoles={portfolioRoles}
+        prospectTiers={prospectTiers}
+      />
     </div>
   );
 }

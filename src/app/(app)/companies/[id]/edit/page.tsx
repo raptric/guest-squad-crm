@@ -12,7 +12,17 @@ export default async function EditCompanyPage({
   const { id } = await params;
   const supabase = await createClient();
 
-  const [{ data: company }, { data: users }, lifecycleStages, leadStatuses] = await Promise.all([
+  const [
+    { data: company },
+    { data: users },
+    lifecycleStages,
+    leadStatuses,
+    companyTypes,
+    propertyTypes,
+    propertyClasses,
+    portfolioRoles,
+    prospectTiers,
+  ] = await Promise.all([
     supabase
       .from("companies")
       .select(
@@ -27,6 +37,11 @@ export default async function EditCompanyPage({
     supabase.from("users").select("id, name").order("name"),
     getPicklistValues("lifecycle_stage"),
     getPicklistValues("lead_status"),
+    getPicklistValues("company_type"),
+    getPicklistValues("property_type"),
+    getPicklistValues("property_class"),
+    getPicklistValues("portfolio_role"),
+    getPicklistValues("prospect_tier"),
   ]);
 
   if (!company) notFound();
@@ -88,6 +103,11 @@ export default async function EditCompanyPage({
         users={users ?? []}
         lifecycleStages={lifecycleStageOptions}
         leadStatuses={leadStatusOptions}
+        companyTypes={companyTypes}
+        propertyTypes={propertyTypes}
+        propertyClasses={propertyClasses}
+        portfolioRoles={portfolioRoles}
+        prospectTiers={prospectTiers}
         initialValues={initialValues}
         companyId={Number(id)}
       />

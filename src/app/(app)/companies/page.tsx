@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { COMPANY_TYPES } from "@/lib/companies/constants";
 import { getPicklistValues } from "@/lib/picklists";
 
 export const dynamic = "force-dynamic";
@@ -12,9 +11,10 @@ export default async function CompaniesPage({
 }) {
   const params = await searchParams;
   const supabase = await createClient();
-  const [lifecycleStages, leadStatuses] = await Promise.all([
+  const [lifecycleStages, leadStatuses, companyTypes] = await Promise.all([
     getPicklistValues("lifecycle_stage"),
     getPicklistValues("lead_status"),
+    getPicklistValues("company_type"),
   ]);
 
   const pageSize = 20;
@@ -90,7 +90,7 @@ export default async function CompaniesPage({
             className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm"
           >
             <option value="">All</option>
-            {COMPANY_TYPES.map((t) => (
+            {companyTypes.map((t) => (
               <option key={t} value={t}>
                 {t}
               </option>

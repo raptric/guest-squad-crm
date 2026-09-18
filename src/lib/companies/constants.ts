@@ -1,51 +1,9 @@
-export const COMPANY_TYPES = [
-  "Property",
-  "Management Company",
-  "Ownership Company",
-  "Operator",
-  "Hotel Group / Portfolio",
-  "STR Management Company",
-  "Other",
-] as const;
-
-// lead_status and lifecycle_stage are no longer fixed here -- they're admin-editable via
-// /settings (picklist_values table), fetched with getPicklistValues(). See lib/picklists.ts.
-
-export const PROSPECT_TIERS = ["Tier 1", "Tier 2", "Tier 3", "Do Not Pursue"] as const;
-
-export const PROPERTY_TYPES = [
-  "Hotel",
-  "Resort",
-  "Boutique Hotel",
-  "Aparthotel",
-  "Serviced Apartment",
-  "STR / Vacation Rental",
-  "B&B / Inn",
-  "Hostel",
-  "Other",
-] as const;
-
-export const PROPERTY_CLASSES = [
-  "1 Star",
-  "2 Star",
-  "3 Star",
-  "4 Star",
-  "5 Star",
-  "Luxury / Unrated",
-  "Unknown",
-] as const;
-
-// Types that can act as a portfolio/group parent -- everything except a physical Property.
-export const PORTFOLIO_CAPABLE_TYPES = COMPANY_TYPES.filter((t) => t !== "Property");
-
-export const PORTFOLIO_ROLES = [
-  "Independent",
-  "Portfolio Property",
-  "Flagship",
-  "Managed Property",
-  "Franchised Property",
-  "Other",
-] as const;
+// The following are admin-editable via /settings (picklist_values table), fetched with
+// getPicklistValues()/fetchPicklistValues() from lib/picklists.ts -- no longer fixed here:
+// lead_status, lifecycle_stage, company_type, property_type, property_class, portfolio_role,
+// prospect_tier, hiring_signal_role (company_hiring_signals.role), strength
+// (company_signals.strength / company_hiring_signals.strength), offer_service
+// (offer_recommendations.service), contact_role, decision_maker_level, contact_line_type.
 
 export const RATING_CHANNELS = [
   "google",
@@ -58,23 +16,10 @@ export const RATING_CHANNELS = [
   "other",
 ] as const;
 
-export const STRENGTH_LEVELS = ["Strong", "Medium", "Weak", "Unknown"] as const;
-
-export const HIRING_SIGNAL_ROLES = [
-  "Front Desk / Reception",
-  "Night Auditor / Night Reception",
-  "Reservations",
-  "Guest Relations",
-  "Front Office Manager",
-  "Customer Service",
-  "Operations",
-  "Concierge",
-  "Telephone Operator / Call Center",
-  "Other",
-] as const;
-
 // No DB CHECK on these two -- validated at the app layer so the list can grow without a
-// migration (see schema.sql comments on company_signals / property_pain_signals).
+// migration (see schema.sql comments on company_signals / property_pain_signals). Left as
+// plain code constants rather than an admin picklist: an API/agent write should be able to
+// introduce a new value without needing an admin to pre-register it first.
 export const COMPANY_SIGNAL_TYPES = [
   "Guest Response Complaints",
   "Unanswered Calls",
@@ -104,43 +49,11 @@ export const PAIN_SIGNAL_TYPES = [
   "Other",
 ] as const;
 
-export const CONTACT_ROLES = [
-  "Owner / Founder",
-  "General Manager",
-  "Hotel Manager",
-  "VP / Director Operations",
-  "Regional Operations",
-  "Rooms Director",
-  "Front Office",
-  "Reservations",
-  "Revenue",
-  "Guest Relations",
-  "Other",
-] as const;
-
-export const DECISION_MAKER_LEVELS = [
-  "Primary Decision Maker",
-  "Influencer",
-  "Secondary Contact",
-  "Unknown",
-] as const;
-
-export const CONTACT_LINE_TYPES = ["Front Desk", "Owner-Run", "Unknown"] as const;
-
 // V1 only writes these manually; the enum has V2-V4 values too (research, outreach_sent, etc.)
 export const MANUAL_ACTIVITY_TYPES = ["note", "call", "email", "status_change"] as const;
 
-export const OFFER_SERVICES = [
-  "After-hours Guest Support",
-  "Reservations",
-  "Full Guest Operations",
-  "Overflow Coverage",
-  "Front Desk Support",
-  "OTA / Messaging",
-  "Pilot",
-  "Other",
-] as const;
-
+// Structural, not a label list -- drives the one-Primary-per-company DB constraint, so this
+// stays a fixed code value, not an admin-editable picklist.
 export const OFFER_TYPES = ["Primary", "Secondary"] as const;
 
 // The three outcomes a research pass can end in, matching the current lead_status picklist
