@@ -8,10 +8,12 @@ export function ParentCompanyCombobox({
   name,
   initialValue,
   excludeId,
+  searchAll,
 }: {
   name: string;
   initialValue?: CompanyOption | null;
   excludeId?: number;
+  searchAll?: boolean;
 }) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<CompanyOption[]>([]);
@@ -25,13 +27,14 @@ export function ParentCompanyCombobox({
     const timeout = setTimeout(() => {
       const params = new URLSearchParams({ q: query });
       if (excludeId) params.set("exclude", String(excludeId));
+      if (searchAll) params.set("all", "1");
       fetch(`/api/companies/search?${params.toString()}`)
         .then((res) => res.json())
         .then((body) => setResults(body.companies ?? []));
     }, 250);
 
     return () => clearTimeout(timeout);
-  }, [query, selected, excludeId]);
+  }, [query, selected, excludeId, searchAll]);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {

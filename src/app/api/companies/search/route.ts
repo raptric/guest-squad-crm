@@ -17,12 +17,14 @@ export async function GET(request: Request) {
   const excludeId = searchParams.get("exclude");
 
   const allCompanyTypes = await fetchPicklistValues(supabase, "company_type");
-  const portfolioCapableTypes = allCompanyTypes.filter((t) => t !== "Property");
+  // Default: only portfolio-capable types (parent-company picker). all=1: every company.
+  const searchAll = searchParams.get("all") === "1";
+  const searchTypes = searchAll ? allCompanyTypes : allCompanyTypes.filter((t) => t !== "Property");
 
   let query = supabase
     .from("companies")
     .select("id, name, company_type")
-    .in("company_type", portfolioCapableTypes)
+    .in("company_type", searchTypes)
     .is("deleted_at", null)
     .order("name")
     .limit(10);

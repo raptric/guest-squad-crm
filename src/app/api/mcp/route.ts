@@ -4,6 +4,7 @@ import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { matchEnum, matchCountry } from "@/lib/companies/matching";
 import { fetchPicklistValues } from "@/lib/picklists";
+import { isDuplicateEmailError, normalizeContactInput } from "@/lib/contacts";
 import { RATING_CHANNELS, RESEARCH_OUTCOMES } from "@/lib/companies/constants";
 
 function json(data: unknown) {
@@ -268,7 +269,7 @@ const mcpHandler = createMcpHandler((server) => {
     {
       title: "Find or Create Contact",
       description:
-        "Find a contact by verified email, or create one if it doesn't exist, associated with the given company. Only use this with a real, verified email address you found during research -- never create a contact for a generic front-desk line or an unverified/guessed email.",
+        "Find a contact by verified email, or create one under the given company if it doesn't exist. Only use this with a real, verified email address you found during research -- never create a contact for a generic front-desk line or an unverified/guessed email. If the email already exists the contact is updated (only the fields you pass are changed) and stays with its current company. Role/decision-maker/line-type values must match the admin picklists; unrecognized ones are ignored and reported in 'warnings'.",
       inputSchema: {
         company_id: z.number().int(),
         email: z.string().email(),
@@ -279,53 +280,47 @@ const mcpHandler = createMcpHandler((server) => {
         linkedin_url: z.string().optional(),
         contact_role: z.string().optional(),
         decision_maker_level: z.string().optional(),
+        contact_line_type: z.string().optional(),
       },
     },
-    async ({ company_id, email, first_name, last_name, job_title, phone, linkedin_url, contact_role, decision_maker_level }) => {
-      const [validContactRoles, validDecisionMakerLevels] = await Promise.all([
-        fetchPicklistValues(supabase, "contact_role"),
-        fetchPicklistValues(supabase, "decision_maker_level"),
-      ]);
+    async ({ company_id, email, ...rest }) => {
+      const { fields, warnings } = await normalizeContactInput(supabase, { email, ...rest }, { lenient: true });
+      const normalizedEmail = fields.email as string;
+
       const { data: existing } = await supabase
         .from("contacts")
-        .select("id")
-        .ilike("email", email)
+        .select("id, company_id")
+        .eq("email", normalizedEmail)
         .is("deleted_at", null)
-        .limit(1)
-        .single();
+        .maybeSingle();
 
       if (existing) {
-        // Only overwrite fields this call actually provided -- an omitted optional field
+        // Only fields this call provided are in `fields` -- an omitted optional field
         // must never blank out something a previous call already set.
-        const updateFields: Record<string, string | null> = { first_name, email };
-        if (last_name !== undefined) updateFields.last_name = last_name;
-        if (job_title !== undefined) updateFields.job_title = job_title;
-        if (phone !== undefined) updateFields.phone = phone;
-        if (linkedin_url !== undefined) updateFields.linkedin_url = linkedin_url;
-        if (contact_role !== undefined) updateFields.contact_role = matchEnum(contact_role, validContactRoles, null);
-        if (decision_maker_level !== undefined)
-          updateFields.decision_maker_level = matchEnum(decision_maker_level, validDecisionMakerLevels, null);
-
-        const { error } = await supabase.from("contacts").update(updateFields).eq("id", existing.id);
+        const { error } = await supabase.from("contacts").update(fields).eq("id", existing.id);
         if (error) return errorResult(error.message);
-        return json({ status: "updated", contact_id: existing.id });
+        return json({
+          status: "updated",
+          contact_id: existing.id,
+          company_id: existing.company_id,
+          ...(existing.company_id !== company_id && {
+            note: `Contact already exists under company ${existing.company_id}; it was updated there, not moved to ${company_id}.`,
+          }),
+          warnings,
+        });
       }
 
-      const fields = {
-        company_id,
-        first_name,
-        last_name: last_name || null,
-        email,
-        job_title: job_title || null,
-        phone: phone || null,
-        linkedin_url: linkedin_url || null,
-        contact_role: matchEnum(contact_role, validContactRoles, null),
-        decision_maker_level: matchEnum(decision_maker_level, validDecisionMakerLevels, null),
-      };
+      const { data: company } = await supabase.from("companies").select("id").eq("id", company_id).is("deleted_at", null).maybeSingle();
+      if (!company) return errorResult(`Company ${company_id} not found`);
 
-      const { data: created, error } = await supabase.from("contacts").insert(fields).select("id").single();
+      const { data: created, error } = await supabase
+        .from("contacts")
+        .insert({ ...fields, company_id })
+        .select("id")
+        .single();
+      if (isDuplicateEmailError(error)) return errorResult("A contact with this email already exists -- retry to update it");
       if (error || !created) return errorResult(error?.message ?? "Failed to create contact");
-      return json({ status: "created", contact_id: created.id });
+      return json({ status: "created", contact_id: created.id, company_id, warnings });
     }
   );
 

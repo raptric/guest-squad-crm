@@ -273,7 +273,9 @@ export default async function CompanyDetailPage({
                 {contacts.map((c) => (
                   <li key={c.id} className="space-y-0.5 py-3">
                     <div className="font-medium text-zinc-900">
-                      {c.first_name} {c.last_name ?? ""}
+                      <Link href={`/contacts/${c.id}/edit`} className="hover:underline">
+                        {c.first_name} {c.last_name ?? ""}
+                      </Link>
                     </div>
                     <div className="text-xs text-zinc-500">{c.contact_role}</div>
                     <div className="text-xs text-zinc-500">
