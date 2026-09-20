@@ -22,6 +22,7 @@ export default async function EditCompanyPage({
     propertyClasses,
     portfolioRoles,
     prospectTiers,
+    countries,
   ] = await Promise.all([
     supabase
       .from("companies")
@@ -42,6 +43,7 @@ export default async function EditCompanyPage({
     getPicklistValues("property_class"),
     getPicklistValues("portfolio_role"),
     getPicklistValues("prospect_tier"),
+    getPicklistValues("country"),
   ]);
 
   if (!company) notFound();
@@ -55,6 +57,9 @@ export default async function EditCompanyPage({
   const leadStatusOptions = leadStatuses.includes(company.lead_status)
     ? leadStatuses
     : [company.lead_status, ...leadStatuses];
+
+  const countryOptions =
+    !company.country || countries.includes(company.country) ? countries : [company.country, ...countries];
 
   const { data: propertyDetails } =
     company.company_type === "Property"
@@ -108,6 +113,7 @@ export default async function EditCompanyPage({
         propertyClasses={propertyClasses}
         portfolioRoles={portfolioRoles}
         prospectTiers={prospectTiers}
+        countries={countryOptions}
         initialValues={initialValues}
         companyId={Number(id)}
       />

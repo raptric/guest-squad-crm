@@ -19,6 +19,7 @@ const FIELDS: { title: string; fieldName: string }[] = [
   { title: "Contact Role", fieldName: "contact_role" },
   { title: "Decision Maker Level", fieldName: "decision_maker_level" },
   { title: "Contact Line Type", fieldName: "contact_line_type" },
+  { title: "Country", fieldName: "country" },
 ];
 
 export default async function SettingsPage() {

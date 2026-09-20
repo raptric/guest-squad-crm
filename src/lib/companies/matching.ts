@@ -17,3 +17,27 @@ export function normalizeDomain(value: string) {
     .replace(/^www\./, "")
     .replace(/\/+$/, "");
 }
+
+const COUNTRY_ALIASES: Record<string, string> = {
+  usa: "United States",
+  us: "United States",
+  "u.s.": "United States",
+  "u.s.a.": "United States",
+  "united states of america": "United States",
+  uk: "United Kingdom",
+  "u.k.": "United Kingdom",
+  "great britain": "United Kingdom",
+  england: "United Kingdom",
+  scotland: "United Kingdom",
+  wales: "United Kingdom",
+  turkiye: "Turkey",
+  "türkiye": "Turkey",
+  uae: "United Arab Emirates",
+};
+
+// Maps common spellings/aliases onto the Country dropdown; unknown values become null.
+export function matchCountry(value: string | undefined, allowed: readonly string[]) {
+  if (!value) return null;
+  const trimmed = value.trim();
+  return matchEnum(COUNTRY_ALIASES[trimmed.toLowerCase()] ?? trimmed, allowed, null);
+}

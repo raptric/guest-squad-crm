@@ -11,10 +11,11 @@ export default async function CompaniesPage({
 }) {
   const params = await searchParams;
   const supabase = await createClient();
-  const [lifecycleStages, leadStatuses, companyTypes] = await Promise.all([
+  const [lifecycleStages, leadStatuses, companyTypes, countries] = await Promise.all([
     getPicklistValues("lifecycle_stage"),
     getPicklistValues("lead_status"),
     getPicklistValues("company_type"),
+    getPicklistValues("country"),
   ]);
 
   const pageSize = 20;
@@ -34,7 +35,7 @@ export default async function CompaniesPage({
     .range(from, to);
 
   if (params.city) query = query.ilike("city", `%${params.city}%`);
-  if (params.country) query = query.ilike("country", `%${params.country}%`);
+  if (params.country) query = query.eq("country", params.country);
   if (params.company_type) query = query.eq("company_type", params.company_type);
   if (params.lifecycle_stage) query = query.eq("lifecycle_stage", params.lifecycle_stage);
   if (params.lead_status) query = query.eq("lead_status", params.lead_status);
@@ -76,11 +77,18 @@ export default async function CompaniesPage({
         </div>
         <div className="space-y-1">
           <label className="text-xs font-medium text-zinc-700">Country</label>
-          <input
+          <select
             name="country"
-            defaultValue={params.country}
+            defaultValue={params.country ?? ""}
             className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm"
-          />
+          >
+            <option value="">All</option>
+            {countries.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
         </div>
         <div className="space-y-1">
           <label className="text-xs font-medium text-zinc-700">Type</label>

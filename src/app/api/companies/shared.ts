@@ -35,7 +35,7 @@ export function parseCompanyFields(body: Record<string, unknown>) {
     country: country || null,
     zip: zip || null,
     phone: phone || null,
-    lifecycle_stage: lifecycle_stage || "Prospect",
+    lifecycle_stage: lifecycle_stage || "Lead",
     lead_status: lead_status || "New",
     prospect_tier: prospect_tier || null,
     qualification_summary: qualification_summary || null,

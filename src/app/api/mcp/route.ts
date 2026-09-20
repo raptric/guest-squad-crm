@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createMcpHandler } from "mcp-handler";
 import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { matchEnum } from "@/lib/companies/matching";
+import { matchEnum, matchCountry } from "@/lib/companies/matching";
 import { fetchPicklistValues } from "@/lib/picklists";
 import { RATING_CHANNELS, RESEARCH_OUTCOMES } from "@/lib/companies/constants";
 
@@ -118,10 +118,11 @@ const mcpHandler = createMcpHandler((server) => {
       },
     },
     async ({ name, company_type, website, city, state, country, property_type, parent_company_id, lifecycle_stage }) => {
-      const [validCompanyTypes, validPropertyTypes, validLifecycleStages] = await Promise.all([
+      const [validCompanyTypes, validPropertyTypes, validLifecycleStages, validCountries] = await Promise.all([
         fetchPicklistValues(supabase, "company_type"),
         fetchPicklistValues(supabase, "property_type"),
         fetchPicklistValues(supabase, "lifecycle_stage"),
+        fetchPicklistValues(supabase, "country"),
       ]);
       const resolvedType = matchEnum(company_type, validCompanyTypes, "Property")!;
 
@@ -146,7 +147,7 @@ const mcpHandler = createMcpHandler((server) => {
           website: website || null,
           city: city || null,
           state: state || null,
-          country: country || null,
+          country: matchCountry(country, validCountries) ?? (country?.trim() || null),
           company_type: resolvedType,
           parent_company_id: parent_company_id || null,
           lifecycle_stage: matchEnum(lifecycle_stage, validLifecycleStages, "Lead"),

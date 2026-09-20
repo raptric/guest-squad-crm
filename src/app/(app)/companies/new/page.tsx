@@ -14,6 +14,7 @@ export default async function NewCompanyPage() {
     propertyClasses,
     portfolioRoles,
     prospectTiers,
+    countries,
   ] = await Promise.all([
     supabase.from("users").select("id, name").order("name"),
     getPicklistValues("lifecycle_stage"),
@@ -23,6 +24,7 @@ export default async function NewCompanyPage() {
     getPicklistValues("property_class"),
     getPicklistValues("portfolio_role"),
     getPicklistValues("prospect_tier"),
+    getPicklistValues("country"),
   ]);
 
   return (
@@ -43,6 +45,7 @@ export default async function NewCompanyPage() {
         propertyClasses={propertyClasses}
         portfolioRoles={portfolioRoles}
         prospectTiers={prospectTiers}
+        countries={countries}
       />
     </div>
   );

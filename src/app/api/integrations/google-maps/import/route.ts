@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { matchEnum } from "@/lib/companies/matching";
+import { matchEnum, matchCountry } from "@/lib/companies/matching";
 import { fetchPicklistValues } from "@/lib/picklists";
 
 const MAX_BATCH_SIZE = 500;
@@ -50,10 +50,11 @@ export async function POST(request: Request) {
   }
 
   const supabase = createAdminClient();
-  const [validLeadStatuses, validCompanyTypes, validPropertyTypes] = await Promise.all([
+  const [validLeadStatuses, validCompanyTypes, validPropertyTypes, validCountries] = await Promise.all([
     fetchPicklistValues(supabase, "lead_status"),
     fetchPicklistValues(supabase, "company_type"),
     fetchPicklistValues(supabase, "property_type"),
+    fetchPicklistValues(supabase, "country"),
   ]);
   const results: { index: number; status: "created" | "skipped"; company_id?: number; error?: string }[] = [];
 
@@ -87,7 +88,7 @@ export async function POST(request: Request) {
         city: h.city || null,
         state: h.state || null,
         zip: h.zip || null,
-        country: h.country || null,
+        country: matchCountry(h.country, validCountries) ?? (h.country?.trim() || null),
         company_type: companyType,
         lifecycle_stage: "Lead",
         lead_status: leadStatus,

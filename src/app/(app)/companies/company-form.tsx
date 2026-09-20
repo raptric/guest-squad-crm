@@ -40,6 +40,7 @@ export function CompanyForm({
   propertyClasses,
   portfolioRoles,
   prospectTiers,
+  countries,
   initialValues,
   companyId,
 }: {
@@ -51,6 +52,7 @@ export function CompanyForm({
   propertyClasses: string[];
   portfolioRoles: string[];
   prospectTiers: string[];
+  countries: string[];
   initialValues?: CompanyInitialValues;
   companyId?: number;
 }) {
@@ -171,7 +173,13 @@ export function CompanyForm({
           <Field label="State" name="state" defaultValue={initialValues?.state ?? undefined} />
         </div>
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Country" name="country" defaultValue={initialValues?.country ?? undefined} />
+          <SelectField
+            label="Country"
+            name="country"
+            options={countries}
+            allowEmpty
+            defaultValue={initialValues?.country ?? undefined}
+          />
           <Field label="Zip" name="zip" defaultValue={initialValues?.zip ?? undefined} />
         </div>
         <Field label="Phone" name="phone" defaultValue={initialValues?.phone ?? undefined} />
