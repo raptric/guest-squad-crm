@@ -13,17 +13,20 @@ export default async function NewContactPage({
   const { company_id } = await searchParams;
   const supabase = await createClient();
 
-  const [contactRoles, decisionMakerLevels, contactLineTypes, { data: company }] = await Promise.all([
-    getPicklistValues("contact_role"),
-    getPicklistValues("decision_maker_level"),
-    getPicklistValues("contact_line_type"),
-    company_id
-      ? supabase.from("companies").select("id, name, company_type").eq("id", company_id).is("deleted_at", null).single()
-      : Promise.resolve({ data: null }),
-  ]);
+  const [contactRoles, decisionMakerLevels, contactLineTypes, emailLabels, phoneLabels, { data: company }] =
+    await Promise.all([
+      getPicklistValues("contact_role"),
+      getPicklistValues("decision_maker_level"),
+      getPicklistValues("contact_line_type"),
+      getPicklistValues("email_label"),
+      getPicklistValues("phone_label"),
+      company_id
+        ? supabase.from("companies").select("id, name, company_type").eq("id", company_id).is("deleted_at", null).single()
+        : Promise.resolve({ data: null }),
+    ]);
 
   return (
-    <div className="mx-auto w-full max-w-2xl space-y-6 p-8">
+    <div className="mx-auto w-full max-w-3xl space-y-6 p-8">
       <div>
         <h1 className="text-xl font-semibold text-zinc-900">New Contact</h1>
         <Link href="/contacts" className="text-sm text-zinc-500 hover:text-zinc-700">
@@ -35,7 +38,13 @@ export default async function NewContactPage({
         contactRoles={contactRoles}
         decisionMakerLevels={decisionMakerLevels}
         contactLineTypes={contactLineTypes}
-        initialValues={{ companies: company ? [company] : [] }}
+        emailLabels={emailLabels}
+        phoneLabels={phoneLabels}
+        initialValues={{
+          companies: company
+            ? [{ company, job_title: "", contact_role: "", decision_maker_level: "", is_verified: false }]
+            : [],
+        }}
       />
     </div>
   );

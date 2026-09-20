@@ -19,6 +19,8 @@ const FIELDS: { title: string; fieldName: string }[] = [
   { title: "Contact Role", fieldName: "contact_role" },
   { title: "Decision Maker Level", fieldName: "decision_maker_level" },
   { title: "Contact Line Type", fieldName: "contact_line_type" },
+  { title: "Email Label", fieldName: "email_label" },
+  { title: "Phone Label", fieldName: "phone_label" },
   { title: "Country", fieldName: "country" },
 ];
 

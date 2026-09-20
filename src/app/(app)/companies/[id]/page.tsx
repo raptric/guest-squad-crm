@@ -65,7 +65,12 @@ export default async function CompanyDetailPage({
     supabase
       .from("contact_companies")
       .select(
-        "is_primary, contact:contact_id!inner ( id, first_name, last_name, email, phone, job_title, contact_role, decision_maker_level, deleted_at )"
+        `is_primary, job_title, contact_role, is_verified, added_by_type,
+         contact:contact_id!inner (
+           id, first_name, last_name, deleted_at,
+           contact_emails ( email, company_id, is_primary, is_verified ),
+           contact_phones ( phone, company_id, is_primary, is_verified )
+         )`
       )
       .eq("company_id", id)
       .is("contact.deleted_at", null)
@@ -93,16 +98,26 @@ export default async function CompanyDetailPage({
       .order("type"),
   ]);
 
+  type Channel = { company_id: number | null; is_primary: boolean; is_verified: boolean; email?: string; phone?: string };
   type CompanyContact = {
     id: number;
     first_name: string;
     last_name: string | null;
-    email: string | null;
-    phone: string | null;
+    contact_emails: Channel[];
+    contact_phones: Channel[];
+    // This company's link to the person
     job_title: string | null;
     contact_role: string | null;
+    is_verified: boolean;
+    added_by_type: string;
   };
-  const contacts = (contactLinks ?? []).map((l) => l.contact as unknown as CompanyContact);
+  // Show the emails/phones tied to this company plus the person's general ones.
+  const forThisCompany = (rows: Channel[]) =>
+    rows.filter((r) => r.company_id === null || Number(r.company_id) === Number(id));
+  const contacts = (contactLinks ?? []).map(({ contact, ...link }) => ({
+    ...(contact as unknown as Omit<CompanyContact, "job_title" | "contact_role" | "is_verified" | "added_by_type">),
+    ...link,
+  })) as CompanyContact[];
 
   const { data: painSignals } = propertyDetails
     ? await supabase
@@ -290,10 +305,28 @@ export default async function CompanyDetailPage({
                         {c.first_name} {c.last_name ?? ""}
                       </Link>
                     </div>
-                    <div className="text-xs text-zinc-500">{c.contact_role}</div>
                     <div className="text-xs text-zinc-500">
-                      {[c.job_title, c.email, c.phone].filter(Boolean).join(" · ") || "—"}
+                      {[c.job_title, c.contact_role].filter(Boolean).join(" · ") || "—"}
+                      {c.is_verified ? (
+                        <span className="ml-2 text-green-700">✓ verified</span>
+                      ) : (
+                        <span className="ml-2 text-amber-700">
+                          {c.added_by_type === "agent" ? "needs review" : "unverified"}
+                        </span>
+                      )}
                     </div>
+                    {forThisCompany(c.contact_emails).map((e) => (
+                      <div key={e.email} className="text-xs text-zinc-500">
+                        {e.email}
+                        {!e.is_verified && <span className="ml-1 text-amber-700">(unverified)</span>}
+                      </div>
+                    ))}
+                    {forThisCompany(c.contact_phones).map((p) => (
+                      <div key={p.phone} className="text-xs text-zinc-500">
+                        {p.phone}
+                        {!p.is_verified && <span className="ml-1 text-amber-700">(unverified)</span>}
+                      </div>
+                    ))}
                   </li>
                 ))}
               </ul>

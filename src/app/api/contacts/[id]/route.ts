@@ -1,75 +1,73 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import {
+  findContactsByEmails,
   findMissingCompanies,
   isDuplicateEmailError,
-  normalizeContactInput,
-  parseCompanyIds,
-  setContactCompanies,
+  normalizeContactPayload,
+  softDeleteContact,
+  syncChannels,
+  syncCompanyLinks,
 } from "@/lib/contacts";
+import { getHumanActor } from "../actor";
 
-async function authorize() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  return user ? supabase : null;
-}
+const fail = (error: string, status: number) => NextResponse.json({ error }, { status });
 
+// Partial update. Person fields apply when present; companies / emails / phones, when present,
+// replace that contact's full set (the first entry is primary).
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const supabase = await authorize();
-  if (!supabase) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const contactId = Number(id);
+  const supabase = await createClient();
+  const actor = await getHumanActor(supabase);
+  if (!actor) return fail("Unauthorized", 401);
 
   const body = await request.json();
-  if (body.first_name !== undefined && !String(body.first_name).trim()) {
-    return NextResponse.json({ error: "First name is required" }, { status: 400 });
+  if (body.first_name !== undefined && !String(body.first_name).trim()) return fail("First name is required", 400);
+  if (body.companies !== undefined && !body.companies.length) {
+    return fail("A contact must belong to at least one company", 400);
   }
 
-  const { fields, error: validationError } = await normalizeContactInput(supabase, body);
-  if (validationError) return NextResponse.json({ error: validationError }, { status: 400 });
+  const normalized = await normalizeContactPayload(supabase, body);
+  if (normalized.error) return fail(normalized.error, 400);
 
-  let companyIds: number[] | null = null;
-  if (body.company_ids !== undefined) {
-    companyIds = parseCompanyIds(body.company_ids);
-    if (companyIds.length === 0) {
-      return NextResponse.json({ error: "A contact must belong to at least one company" }, { status: 400 });
-    }
-    const missing = await findMissingCompanies(supabase, companyIds);
-    if (missing.length) return NextResponse.json({ error: `Company not found: ${missing.join(", ")}` }, { status: 404 });
+  if (normalized.companies) {
+    const missing = await findMissingCompanies(supabase, normalized.companies.map((l) => l.company_id));
+    if (missing.length) return fail(`Company not found: ${missing.join(", ")}`, 404);
+  }
+  if (normalized.emails) {
+    const owners = await findContactsByEmails(supabase, normalized.emails.map((e) => e.value));
+    if (owners.some((o) => o.contact_id !== contactId)) return fail("A contact with this email already exists", 409);
   }
 
-  // An update with no contact fields (e.g. only company_ids) still needs the existence check.
-  const query = Object.keys(fields).length
-    ? supabase.from("contacts").update(fields)
-    : supabase.from("contacts").update({ updated_at: new Date().toISOString() });
-  const { data, error } = await query.eq("id", id).is("deleted_at", null).select("id").maybeSingle();
+  const { data: contact, error } = await supabase
+    .from("contacts")
+    .update(Object.keys(normalized.person).length ? normalized.person : { updated_at: new Date().toISOString() })
+    .eq("id", contactId)
+    .is("deleted_at", null)
+    .select("id")
+    .maybeSingle();
+  if (error) return fail(error.message, 500);
+  if (!contact) return fail("Contact not found", 404);
 
-  if (isDuplicateEmailError(error)) {
-    return NextResponse.json({ error: "A contact with this email already exists" }, { status: 409 });
+  const syncError =
+    (normalized.companies && (await syncCompanyLinks(supabase, contactId, normalized.companies, actor))) ||
+    (normalized.emails && (await syncChannels(supabase, "contact_emails", contactId, normalized.emails, actor))) ||
+    (normalized.phones && (await syncChannels(supabase, "contact_phones", contactId, normalized.phones, actor)));
+  if (syncError) {
+    return isDuplicateEmailError(syncError) ? fail("A contact with this email already exists", 409) : fail(syncError.message, 500);
   }
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  if (!data) return NextResponse.json({ error: "Contact not found" }, { status: 404 });
 
-  if (companyIds) {
-    const linkError = await setContactCompanies(supabase, Number(id), companyIds);
-    if (linkError) return NextResponse.json({ error: linkError.message }, { status: 500 });
-  }
-
-  return NextResponse.json({ id: data.id });
+  return NextResponse.json({ id: contactId });
 }
 
-// Soft delete -- the row (and its activity history) is kept, but hidden everywhere.
+// Soft delete -- the row is kept but hidden everywhere, and its emails are released for reuse.
 export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const supabase = await authorize();
-  if (!supabase) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const supabase = await createClient();
+  if (!(await getHumanActor(supabase))) return fail("Unauthorized", 401);
 
-  const { error } = await supabase
-    .from("contacts")
-    .update({ deleted_at: new Date().toISOString() })
-    .eq("id", id);
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-
+  const error = await softDeleteContact(supabase, Number(id));
+  if (error) return fail(error.message, 500);
   return NextResponse.json({ ok: true });
 }

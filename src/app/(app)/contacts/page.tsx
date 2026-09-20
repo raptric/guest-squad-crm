@@ -3,24 +3,28 @@ import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
-type CompanyLink = { is_primary: boolean; company: { id: number; name: string } };
+type CompanyLink = {
+  is_primary: boolean;
+  job_title: string | null;
+  contact_role: string | null;
+  decision_maker_level: string | null;
+  is_verified: boolean;
+  company: { id: number; name: string };
+};
+type Channel = { is_primary: boolean; is_verified: boolean; email?: string; phone?: string };
 
-// Primary company first; any others are summarized as "+N" with the full list on hover.
-function CompanyLinks({ links }: { links: CompanyLink[] }) {
-  if (!links?.length) return <>—</>;
-  const sorted = [...links].sort((a, b) => Number(b.is_primary) - Number(a.is_primary));
-  const [first, ...others] = sorted;
-  return (
-    <>
-      <Link href={`/companies/${first.company.id}`} className="hover:underline">
-        {first.company.name}
-      </Link>
-      {others.length > 0 && (
-        <span className="ml-1 text-xs text-zinc-500" title={others.map((o) => o.company.name).join(", ")}>
-          +{others.length} more
-        </span>
-      )}
-    </>
+const primaryFirst = <T extends { is_primary: boolean }>(rows: T[] | null) =>
+  [...(rows ?? [])].sort((a, b) => Number(b.is_primary) - Number(a.is_primary));
+
+function Verified({ ok }: { ok: boolean }) {
+  return ok ? (
+    <span className="ml-1 text-green-700" title="Verified">
+      ✓
+    </span>
+  ) : (
+    <span className="ml-1 text-xs text-amber-700" title="Not yet verified">
+      unverified
+    </span>
   );
 }
 
@@ -40,7 +44,11 @@ export default async function ContactsPage({
   let query = supabase
     .from("contacts")
     .select(
-      "id, first_name, last_name, email, phone, job_title, contact_role, decision_maker_level, contact_companies ( is_primary, company:company_id ( id, name ) )",
+      `id, first_name, last_name,
+       contact_companies ( is_primary, job_title, contact_role, decision_maker_level, is_verified,
+         company:company_id ( id, name ) ),
+       contact_emails ( email, is_primary, is_verified ),
+       contact_phones ( phone, is_primary, is_verified )`,
       { count: "exact" }
     )
     .is("deleted_at", null)
@@ -50,8 +58,14 @@ export default async function ContactsPage({
   // Strip characters that are special in PostgREST's or() filter syntax.
   const term = q?.trim().replace(/[,()%*]/g, " ");
   if (term) {
+    // Emails and job titles live in child tables: find matching contact ids there first.
+    const [{ data: byEmail }, { data: byTitle }] = await Promise.all([
+      supabase.from("contact_emails").select("contact_id").ilike("email", `%${term}%`),
+      supabase.from("contact_companies").select("contact_id").ilike("job_title", `%${term}%`),
+    ]);
+    const ids = [...new Set([...(byEmail ?? []), ...(byTitle ?? [])].map((r) => r.contact_id))];
     query = query.or(
-      `first_name.ilike.%${term}%,last_name.ilike.%${term}%,email.ilike.%${term}%,job_title.ilike.%${term}%`
+      [`first_name.ilike.%${term}%`, `last_name.ilike.%${term}%`, ...(ids.length ? [`id.in.(${ids.join(",")})`] : [])].join(",")
     );
   }
 
@@ -60,7 +74,7 @@ export default async function ContactsPage({
   const pageHref = (p: number) => `/contacts?${new URLSearchParams({ ...(q ? { q } : {}), page: String(p) })}`;
 
   return (
-    <div className="mx-auto w-full max-w-5xl space-y-6 p-8">
+    <div className="mx-auto w-full max-w-6xl space-y-6 p-8">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-semibold text-zinc-900">Contacts</h1>
@@ -107,23 +121,61 @@ export default async function ContactsPage({
           </tr>
         </thead>
         <tbody>
-          {contacts?.map((c) => (
-            <tr key={c.id} className="border-b border-zinc-100 hover:bg-zinc-50">
-              <td className="py-2 pr-4">
-                <Link href={`/contacts/${c.id}/edit`} className="font-medium text-zinc-900 hover:underline">
-                  {c.first_name} {c.last_name ?? ""}
-                </Link>
-              </td>
-              <td className="py-2 pr-4 text-zinc-600">
-                <CompanyLinks links={c.contact_companies as unknown as CompanyLink[]} />
-              </td>
-              <td className="py-2 pr-4 text-zinc-600">{c.job_title ?? "—"}</td>
-              <td className="py-2 pr-4 text-zinc-600">{c.contact_role ?? "—"}</td>
-              <td className="py-2 pr-4 text-zinc-600">{c.decision_maker_level ?? "—"}</td>
-              <td className="py-2 pr-4 text-zinc-600">{c.email ?? "—"}</td>
-              <td className="py-2 text-zinc-600">{c.phone ?? "—"}</td>
-            </tr>
-          ))}
+          {contacts?.map((c) => {
+            const links = primaryFirst(c.contact_companies as unknown as CompanyLink[]);
+            const [first, ...others] = links;
+            const email = primaryFirst(c.contact_emails as unknown as Channel[])[0];
+            const phone = primaryFirst(c.contact_phones as unknown as Channel[])[0];
+            return (
+              <tr key={c.id} className="border-b border-zinc-100 hover:bg-zinc-50">
+                <td className="py-2 pr-4">
+                  <Link href={`/contacts/${c.id}/edit`} className="font-medium text-zinc-900 hover:underline">
+                    {c.first_name} {c.last_name ?? ""}
+                  </Link>
+                </td>
+                <td className="py-2 pr-4 text-zinc-600">
+                  {first ? (
+                    <>
+                      <Link href={`/companies/${first.company.id}`} className="hover:underline">
+                        {first.company.name}
+                      </Link>
+                      <Verified ok={first.is_verified} />
+                      {others.length > 0 && (
+                        <span className="ml-1 text-xs text-zinc-500" title={others.map((o) => o.company.name).join(", ")}>
+                          +{others.length} more
+                        </span>
+                      )}
+                    </>
+                  ) : (
+                    "—"
+                  )}
+                </td>
+                <td className="py-2 pr-4 text-zinc-600">{first?.job_title ?? "—"}</td>
+                <td className="py-2 pr-4 text-zinc-600">{first?.contact_role ?? "—"}</td>
+                <td className="py-2 pr-4 text-zinc-600">{first?.decision_maker_level ?? "—"}</td>
+                <td className="py-2 pr-4 text-zinc-600">
+                  {email ? (
+                    <>
+                      {email.email}
+                      <Verified ok={email.is_verified} />
+                    </>
+                  ) : (
+                    "—"
+                  )}
+                </td>
+                <td className="py-2 text-zinc-600">
+                  {phone ? (
+                    <>
+                      {phone.phone}
+                      <Verified ok={phone.is_verified} />
+                    </>
+                  ) : (
+                    "—"
+                  )}
+                </td>
+              </tr>
+            );
+          })}
           {contacts?.length === 0 && (
             <tr>
               <td colSpan={7} className="py-8 text-center text-zinc-500">

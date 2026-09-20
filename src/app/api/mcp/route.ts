@@ -4,7 +4,13 @@ import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { matchEnum, matchCountry } from "@/lib/companies/matching";
 import { fetchPicklistValues } from "@/lib/picklists";
-import { addContactToCompany, isDuplicateEmailError, normalizeContactInput } from "@/lib/contacts";
+import {
+  addChannels,
+  addCompanyLink,
+  findContactsByEmails,
+  normalizeContactPayload,
+  type Actor,
+} from "@/lib/contacts";
 import { RATING_CHANNELS, RESEARCH_OUTCOMES } from "@/lib/companies/constants";
 
 function json(data: unknown) {
@@ -15,8 +21,65 @@ function errorResult(message: string) {
   return { content: [{ type: "text" as const, text: message }], isError: true };
 }
 
+type ToolResult = { content: { type: "text"; text: string }[]; isError?: boolean };
+
+// Everything Codex writes is unverified until a person reviews it (human-in-the-loop).
+const AGENT: Actor = { type: "agent", name: "Codex" };
+
+// Tools that change data. Each successful call is recorded in the activity log with its exact
+// arguments and result, so reviewers can see what the agent submitted.
+const AUDITED_TOOLS = new Set([
+  "find_or_create_company",
+  "link_company_to_parent",
+  "update_qualification",
+  "update_property_profile",
+  "find_or_create_contact",
+  "add_rating",
+  "add_signal",
+  "add_hiring_signal",
+  "add_pain_signal",
+  "set_research_outcome",
+]);
+
 const mcpHandler = createMcpHandler((server) => {
   const supabase = createAdminClient();
+
+  const registerTool = server.registerTool.bind(server) as unknown as (
+    name: string,
+    config: unknown,
+    cb: (args: Record<string, unknown>, extra: unknown) => Promise<ToolResult>
+  ) => unknown;
+  (server as unknown as { registerTool: typeof registerTool }).registerTool = (name, config, cb) =>
+    registerTool(
+      name,
+      config,
+      AUDITED_TOOLS.has(name)
+        ? async (args, extra) => {
+            const result = await cb(args, extra);
+            if (!result.isError) {
+              try {
+                const output = JSON.parse(result.content[0].text) as Record<string, unknown>;
+                const companyId = Number(args.company_id ?? output.company_id) || null;
+                const contactId = Number(output.contact_id) || null;
+                if (companyId || contactId) {
+                  await supabase.from("activities").insert({
+                    company_id: companyId,
+                    contact_id: contactId,
+                    activity_type: "research",
+                    actor_type: "agent",
+                    actor_name: AGENT.name,
+                    body: `Agent tool call: ${name}`,
+                    metadata: { tool: name, args, result: output },
+                  });
+                }
+              } catch {
+                // An audit-log failure must never fail the research write itself.
+              }
+            }
+            return result;
+          }
+        : cb
+    );
 
   server.registerTool(
     "list_companies",
@@ -85,7 +148,14 @@ const mcpHandler = createMcpHandler((server) => {
         supabase.from("companies").select("id, name, company_type, city, country").eq("parent_company_id", company_id).is("deleted_at", null),
         supabase
           .from("contact_companies")
-          .select("is_primary, contact:contact_id!inner ( * )")
+          .select(
+            `is_primary, job_title, contact_role, decision_maker_level, is_verified, source_url, evidence, added_by_type,
+             contact:contact_id!inner (
+               id, first_name, last_name, linkedin_url, contact_line_type,
+               contact_emails ( email, label, company_id, is_primary, is_verified, source_url, evidence, added_by_type ),
+               contact_phones ( phone, label, company_id, is_primary, is_verified, source_url, evidence, added_by_type )
+             )`
+          )
           .eq("company_id", company_id)
           .is("contact.deleted_at", null),
         supabase.from("company_ratings").select("*").eq("company_id", company_id),
@@ -98,7 +168,11 @@ const mcpHandler = createMcpHandler((server) => {
         ? await supabase.from("property_pain_signals").select("*").eq("property_id", propertyDetails.id)
         : { data: null };
 
-      const contacts = (contactLinks ?? []).map((l) => ({ ...(l.contact as unknown as object), is_primary_company: l.is_primary }));
+      // One entry per person; job details and verification are for THIS company's link.
+      const contacts = (contactLinks ?? []).map(({ contact, ...link }) => ({
+        ...(contact as unknown as object),
+        this_company: link,
+      }));
 
       return json({ company, propertyDetails, children, contacts, ratings, hiringSignals, signals, offers, painSignals });
     }
@@ -275,51 +349,138 @@ const mcpHandler = createMcpHandler((server) => {
     {
       title: "Find or Create Contact",
       description:
-        "Find a contact by verified email, or create one under the given company if it doesn't exist. Only use this with a real, verified email address you found during research -- never create a contact for a generic front-desk line or an unverified/guessed email. If the email already exists, that contact is updated (only the fields you pass are changed) and additionally associated with this company -- a contact can belong to several companies (e.g. a regional manager or portfolio owner), so use this to link the same person to each relevant company. Role/decision-maker/line-type values must match the admin picklists; unrecognized ones are ignored and reported in 'warnings'.",
+        "Record a person you found during research and associate them with a company. Everything you submit is stored UNVERIFIED with your source/evidence, and a human reviews it later -- so include a source_url or evidence for every email and phone, and only submit real addresses you actually found (never guess or invent one, and skip generic front-desk mailboxes). " +
+        "The person is matched by ANY of the emails you send; if they already exist they are not duplicated -- this company is added to their companies (a person can work with several), missing emails/phones are added, and existing verified or human-entered values are never overwritten (blanks are filled). job_title / contact_role / decision_maker_level describe the person AT THIS company. " +
+        "Per email or phone, applies_to_company (default true) ties it to this company (a work address); set it to false for a personal email or cell that is not company-specific. " +
+        "Role/decision-maker/label values must match the admin picklists; unrecognized ones are ignored and reported in 'warnings'. If your emails belong to two different existing contacts you'll get an error -- those need a manual merge.",
       inputSchema: {
         company_id: z.number().int(),
-        email: z.string().email(),
         first_name: z.string(),
         last_name: z.string().optional(),
-        job_title: z.string().optional(),
-        phone: z.string().optional(),
         linkedin_url: z.string().optional(),
+        contact_line_type: z.string().optional(),
+        job_title: z.string().optional(),
         contact_role: z.string().optional(),
         decision_maker_level: z.string().optional(),
-        contact_line_type: z.string().optional(),
+        link_source_url: z.string().optional(),
+        link_evidence: z.string().optional(),
+        emails: z
+          .array(
+            z
+              .object({
+                email: z.string().email(),
+                label: z.string().optional(),
+                applies_to_company: z.boolean().default(true),
+                source_url: z.string().optional(),
+                evidence: z.string().optional(),
+              })
+              .refine((e) => e.source_url || e.evidence, { message: "each email needs a source_url or evidence" })
+          )
+          .min(1),
+        phones: z
+          .array(
+            z
+              .object({
+                phone: z.string(),
+                label: z.string().optional(),
+                applies_to_company: z.boolean().default(true),
+                source_url: z.string().optional(),
+                evidence: z.string().optional(),
+              })
+              .refine((p) => p.source_url || p.evidence, { message: "each phone needs a source_url or evidence" })
+          )
+          .optional(),
       },
     },
-    async ({ company_id, email, ...rest }) => {
-      const { fields, warnings } = await normalizeContactInput(supabase, { email, ...rest }, { lenient: true });
-      const normalizedEmail = fields.email as string;
-
+    async ({
+      company_id,
+      first_name,
+      last_name,
+      linkedin_url,
+      contact_line_type,
+      job_title,
+      contact_role,
+      decision_maker_level,
+      link_source_url,
+      link_evidence,
+      emails,
+      phones,
+    }) => {
       const { data: company } = await supabase.from("companies").select("id").eq("id", company_id).is("deleted_at", null).maybeSingle();
       if (!company) return errorResult(`Company ${company_id} not found`);
 
-      const { data: existing } = await supabase
-        .from("contacts")
-        .select("id")
-        .eq("email", normalizedEmail)
-        .is("deleted_at", null)
-        .maybeSingle();
+      const scope = (applies: boolean) => (applies ? company_id : null);
+      const n = await normalizeContactPayload(
+        supabase,
+        {
+          first_name,
+          last_name,
+          linkedin_url,
+          contact_line_type,
+          companies: [
+            { company_id, job_title, contact_role, decision_maker_level, source_url: link_source_url, evidence: link_evidence },
+          ],
+          emails: emails.map((e) => ({ ...e, company_id: scope(e.applies_to_company) })),
+          phones: (phones ?? []).map((p) => ({ ...p, company_id: scope(p.applies_to_company) })),
+        },
+        { lenient: true }
+      );
+      if (n.error) return errorResult(n.error);
 
-      if (existing) {
-        // Only fields this call provided are in `fields` -- an omitted optional field
-        // must never blank out something a previous call already set.
-        const { error } = await supabase.from("contacts").update(fields).eq("id", existing.id);
-        if (error) return errorResult(error.message);
-        // The same person can work with several companies: add this company to their set.
-        const link = await addContactToCompany(supabase, Number(existing.id), company_id);
-        if (link.error) return errorResult(link.error.message);
-        return json({ status: "updated", contact_id: existing.id, company_id, newly_associated: link.added, warnings });
+      const owners = await findContactsByEmails(supabase, n.emails!.map((e) => e.value));
+      const ownerIds = [...new Set(owners.map((o) => o.contact_id))];
+      if (ownerIds.length > 1) {
+        return errorResult(
+          `These emails belong to different existing contacts (${ownerIds.join(", ")}). They need a manual merge -- submit only one person's emails.`
+        );
       }
 
-      const { data: created, error } = await supabase.from("contacts").insert(fields).select("id").single();
-      if (isDuplicateEmailError(error)) return errorResult("A contact with this email already exists -- retry to update it");
-      if (error || !created) return errorResult(error?.message ?? "Failed to create contact");
-      const link = await addContactToCompany(supabase, Number(created.id), company_id);
-      if (link.error) return errorResult(link.error.message);
-      return json({ status: "created", contact_id: created.id, company_id, warnings });
+      let contactId: number;
+      let status: "created" | "updated";
+      if (ownerIds.length === 1) {
+        contactId = ownerIds[0];
+        status = "updated";
+        // Fill blanks on the person; never overwrite what's already there.
+        const { data: current } = await supabase.from("contacts").select("last_name, linkedin_url, contact_line_type").eq("id", contactId).single();
+        const fill: Record<string, string | null> = {};
+        for (const field of ["last_name", "linkedin_url", "contact_line_type"] as const) {
+          if (n.person[field] && !current?.[field]) fill[field] = n.person[field];
+        }
+        if (Object.keys(fill).length) {
+          const { error } = await supabase.from("contacts").update(fill).eq("id", contactId);
+          if (error) return errorResult(error.message);
+        }
+      } else {
+        const { data: created, error } = await supabase.from("contacts").insert(n.person).select("id").single();
+        if (error || !created) return errorResult(error?.message ?? "Failed to create contact");
+        contactId = Number(created.id);
+        status = "created";
+      }
+
+      const link = await addCompanyLink(supabase, contactId, n.companies![0], AGENT);
+      const emailResult = link.error ? null : await addChannels(supabase, "contact_emails", contactId, n.emails!, AGENT);
+      const phoneResult =
+        link.error || emailResult?.error ? null : await addChannels(supabase, "contact_phones", contactId, n.phones ?? [], AGENT);
+
+      const failure = link.error || emailResult?.error || phoneResult?.error;
+      if (failure) {
+        if (status === "created") await supabase.from("contacts").delete().eq("id", contactId);
+        return errorResult(failure.message);
+      }
+
+      return json({
+        status,
+        contact_id: contactId,
+        company_id,
+        company_link_added: link.added,
+        company_link_fields_updated: link.updatedFields,
+        emails_added: emailResult?.added,
+        emails_already_present: emailResult?.existing,
+        phones_added: phoneResult?.added,
+        phones_already_present: phoneResult?.existing,
+        verification: "unverified -- pending human review",
+        warnings: n.warnings,
+      });
     }
   );
 

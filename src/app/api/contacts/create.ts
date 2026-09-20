@@ -1,59 +1,68 @@
 import { NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
-  addContactToCompany,
+  addCompanyLink,
+  findContactsByEmails,
   findMissingCompanies,
   isDuplicateEmailError,
-  normalizeContactInput,
-  normalizeEmail,
-  setContactCompanies,
+  normalizeContactPayload,
+  syncChannels,
+  syncCompanyLinks,
+  type Actor,
+  type ContactPayload,
 } from "@/lib/contacts";
 
-// Creates a contact associated with the given companies (first = primary).
-// linkExisting: if the email already belongs to a contact, associate that contact with the
-// company instead of failing (used by the "Add Contact" form on a company page).
-export async function createContactForCompanies(
+const fail = (error: string, status: number, extra: Record<string, unknown> = {}) =>
+  NextResponse.json({ error, ...extra }, { status });
+
+// Creates a contact with its company links (first = primary), emails and phones.
+// linkExisting: if one of the emails already belongs to a contact, associate THAT contact with
+// the company instead of failing (the "Add Contact" form on a company page).
+export async function createContact(
   supabase: SupabaseClient,
-  companyIds: number[],
-  body: Record<string, unknown>,
+  body: ContactPayload,
+  actor: Actor,
   { linkExisting = false }: { linkExisting?: boolean } = {}
 ) {
-  if (companyIds.length === 0) {
-    return NextResponse.json({ error: "Select at least one company for this contact" }, { status: 400 });
-  }
-  if (!String(body.first_name ?? "").trim()) {
-    return NextResponse.json({ error: "First name is required" }, { status: 400 });
-  }
+  if (!body.companies?.length) return fail("Select at least one company for this contact", 400);
+  if (!String(body.first_name ?? "").trim()) return fail("First name is required", 400);
 
-  const missing = await findMissingCompanies(supabase, companyIds);
-  if (missing.length) return NextResponse.json({ error: `Company not found: ${missing.join(", ")}` }, { status: 404 });
+  const normalized = await normalizeContactPayload(supabase, body);
+  if (normalized.error) return fail(normalized.error, 400);
+  const links = normalized.companies!;
 
-  if (linkExisting) {
-    const email = normalizeEmail(body.email as string | undefined);
-    const { data: existing } = email
-      ? await supabase.from("contacts").select("id").eq("email", email).is("deleted_at", null).maybeSingle()
-      : { data: null };
-    if (existing) {
-      for (const companyId of companyIds) {
-        const { error } = await addContactToCompany(supabase, Number(existing.id), companyId);
-        if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-      }
-      return NextResponse.json({ id: existing.id, linked_existing: true });
+  const missing = await findMissingCompanies(supabase, links.map((l) => l.company_id));
+  if (missing.length) return fail(`Company not found: ${missing.join(", ")}`, 404);
+
+  const owners = await findContactsByEmails(supabase, (normalized.emails ?? []).map((e) => e.value));
+  if (owners.length) {
+    if (!linkExisting) {
+      return fail("A contact with this email already exists", 409, { existing_contact_id: owners[0].contact_id });
     }
+    const existingId = owners[0].contact_id;
+    for (const link of links) {
+      const r = await addCompanyLink(supabase, existingId, link, actor);
+      if (r.error) return fail(r.error.message, 500);
+    }
+    return NextResponse.json({ id: existingId, linked_existing: true });
   }
 
-  const { fields, error: validationError } = await normalizeContactInput(supabase, body);
-  if (validationError) return NextResponse.json({ error: validationError }, { status: 400 });
+  const { data: contact, error } = await supabase.from("contacts").insert(normalized.person).select("id").single();
+  if (error || !contact) return fail(error?.message ?? "Failed to create contact", 500);
+  const contactId = Number(contact.id);
 
-  const { data, error } = await supabase.from("contacts").insert(fields).select().single();
+  const syncError =
+    (await syncCompanyLinks(supabase, contactId, links, actor)) ||
+    (await syncChannels(supabase, "contact_emails", contactId, normalized.emails ?? [], actor)) ||
+    (await syncChannels(supabase, "contact_phones", contactId, normalized.phones ?? [], actor));
 
-  if (isDuplicateEmailError(error)) {
-    return NextResponse.json({ error: "A contact with this email already exists" }, { status: 409 });
+  if (syncError) {
+    // Don't leave a half-built contact behind.
+    await supabase.from("contacts").delete().eq("id", contactId);
+    return isDuplicateEmailError(syncError)
+      ? fail("A contact with this email already exists", 409)
+      : fail(syncError.message, 500);
   }
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  const linkError = await setContactCompanies(supabase, Number(data.id), companyIds);
-  if (linkError) return NextResponse.json({ error: linkError.message }, { status: 500 });
-
-  return NextResponse.json({ contact: data, id: data.id }, { status: 201 });
+  return NextResponse.json({ id: contactId }, { status: 201 });
 }
