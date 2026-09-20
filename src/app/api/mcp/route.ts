@@ -4,7 +4,7 @@ import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { matchEnum, matchCountry } from "@/lib/companies/matching";
 import { fetchPicklistValues } from "@/lib/picklists";
-import { isDuplicateEmailError, normalizeContactInput } from "@/lib/contacts";
+import { addContactToCompany, isDuplicateEmailError, normalizeContactInput } from "@/lib/contacts";
 import { RATING_CHANNELS, RESEARCH_OUTCOMES } from "@/lib/companies/constants";
 
 function json(data: unknown) {
@@ -73,7 +73,7 @@ const mcpHandler = createMcpHandler((server) => {
       const [
         { data: propertyDetails },
         { data: children },
-        { data: contacts },
+        { data: contactLinks },
         { data: ratings },
         { data: hiringSignals },
         { data: signals },
@@ -83,7 +83,11 @@ const mcpHandler = createMcpHandler((server) => {
           ? supabase.from("property_details").select("*").eq("company_id", company_id).single()
           : Promise.resolve({ data: null }),
         supabase.from("companies").select("id, name, company_type, city, country").eq("parent_company_id", company_id).is("deleted_at", null),
-        supabase.from("contacts").select("*").eq("company_id", company_id).is("deleted_at", null),
+        supabase
+          .from("contact_companies")
+          .select("is_primary, contact:contact_id!inner ( * )")
+          .eq("company_id", company_id)
+          .is("contact.deleted_at", null),
         supabase.from("company_ratings").select("*").eq("company_id", company_id),
         supabase.from("company_hiring_signals").select("*").eq("company_id", company_id),
         supabase.from("company_signals").select("*").eq("company_id", company_id),
@@ -93,6 +97,8 @@ const mcpHandler = createMcpHandler((server) => {
       const { data: painSignals } = propertyDetails
         ? await supabase.from("property_pain_signals").select("*").eq("property_id", propertyDetails.id)
         : { data: null };
+
+      const contacts = (contactLinks ?? []).map((l) => ({ ...(l.contact as unknown as object), is_primary_company: l.is_primary }));
 
       return json({ company, propertyDetails, children, contacts, ratings, hiringSignals, signals, offers, painSignals });
     }
@@ -269,7 +275,7 @@ const mcpHandler = createMcpHandler((server) => {
     {
       title: "Find or Create Contact",
       description:
-        "Find a contact by verified email, or create one under the given company if it doesn't exist. Only use this with a real, verified email address you found during research -- never create a contact for a generic front-desk line or an unverified/guessed email. If the email already exists the contact is updated (only the fields you pass are changed) and stays with its current company. Role/decision-maker/line-type values must match the admin picklists; unrecognized ones are ignored and reported in 'warnings'.",
+        "Find a contact by verified email, or create one under the given company if it doesn't exist. Only use this with a real, verified email address you found during research -- never create a contact for a generic front-desk line or an unverified/guessed email. If the email already exists, that contact is updated (only the fields you pass are changed) and additionally associated with this company -- a contact can belong to several companies (e.g. a regional manager or portfolio owner), so use this to link the same person to each relevant company. Role/decision-maker/line-type values must match the admin picklists; unrecognized ones are ignored and reported in 'warnings'.",
       inputSchema: {
         company_id: z.number().int(),
         email: z.string().email(),
@@ -287,9 +293,12 @@ const mcpHandler = createMcpHandler((server) => {
       const { fields, warnings } = await normalizeContactInput(supabase, { email, ...rest }, { lenient: true });
       const normalizedEmail = fields.email as string;
 
+      const { data: company } = await supabase.from("companies").select("id").eq("id", company_id).is("deleted_at", null).maybeSingle();
+      if (!company) return errorResult(`Company ${company_id} not found`);
+
       const { data: existing } = await supabase
         .from("contacts")
-        .select("id, company_id")
+        .select("id")
         .eq("email", normalizedEmail)
         .is("deleted_at", null)
         .maybeSingle();
@@ -299,27 +308,17 @@ const mcpHandler = createMcpHandler((server) => {
         // must never blank out something a previous call already set.
         const { error } = await supabase.from("contacts").update(fields).eq("id", existing.id);
         if (error) return errorResult(error.message);
-        return json({
-          status: "updated",
-          contact_id: existing.id,
-          company_id: existing.company_id,
-          ...(existing.company_id !== company_id && {
-            note: `Contact already exists under company ${existing.company_id}; it was updated there, not moved to ${company_id}.`,
-          }),
-          warnings,
-        });
+        // The same person can work with several companies: add this company to their set.
+        const link = await addContactToCompany(supabase, Number(existing.id), company_id);
+        if (link.error) return errorResult(link.error.message);
+        return json({ status: "updated", contact_id: existing.id, company_id, newly_associated: link.added, warnings });
       }
 
-      const { data: company } = await supabase.from("companies").select("id").eq("id", company_id).is("deleted_at", null).maybeSingle();
-      if (!company) return errorResult(`Company ${company_id} not found`);
-
-      const { data: created, error } = await supabase
-        .from("contacts")
-        .insert({ ...fields, company_id })
-        .select("id")
-        .single();
+      const { data: created, error } = await supabase.from("contacts").insert(fields).select("id").single();
       if (isDuplicateEmailError(error)) return errorResult("A contact with this email already exists -- retry to update it");
       if (error || !created) return errorResult(error?.message ?? "Failed to create contact");
+      const link = await addContactToCompany(supabase, Number(created.id), company_id);
+      if (link.error) return errorResult(link.error.message);
       return json({ status: "created", contact_id: created.id, company_id, warnings });
     }
   );

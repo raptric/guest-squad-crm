@@ -3,6 +3,27 @@ import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
+type CompanyLink = { is_primary: boolean; company: { id: number; name: string } };
+
+// Primary company first; any others are summarized as "+N" with the full list on hover.
+function CompanyLinks({ links }: { links: CompanyLink[] }) {
+  if (!links?.length) return <>—</>;
+  const sorted = [...links].sort((a, b) => Number(b.is_primary) - Number(a.is_primary));
+  const [first, ...others] = sorted;
+  return (
+    <>
+      <Link href={`/companies/${first.company.id}`} className="hover:underline">
+        {first.company.name}
+      </Link>
+      {others.length > 0 && (
+        <span className="ml-1 text-xs text-zinc-500" title={others.map((o) => o.company.name).join(", ")}>
+          +{others.length} more
+        </span>
+      )}
+    </>
+  );
+}
+
 export default async function ContactsPage({
   searchParams,
 }: {
@@ -19,7 +40,7 @@ export default async function ContactsPage({
   let query = supabase
     .from("contacts")
     .select(
-      "id, first_name, last_name, email, phone, job_title, contact_role, decision_maker_level, company_id, companies(name)",
+      "id, first_name, last_name, email, phone, job_title, contact_role, decision_maker_level, contact_companies ( is_primary, company:company_id ( id, name ) )",
       { count: "exact" }
     )
     .is("deleted_at", null)
@@ -94,11 +115,7 @@ export default async function ContactsPage({
                 </Link>
               </td>
               <td className="py-2 pr-4 text-zinc-600">
-                {c.company_id && (
-                  <Link href={`/companies/${c.company_id}`} className="hover:underline">
-                    {(c.companies as unknown as { name: string } | null)?.name ?? "—"}
-                  </Link>
-                )}
+                <CompanyLinks links={c.contact_companies as unknown as CompanyLink[]} />
               </td>
               <td className="py-2 pr-4 text-zinc-600">{c.job_title ?? "—"}</td>
               <td className="py-2 pr-4 text-zinc-600">{c.contact_role ?? "—"}</td>

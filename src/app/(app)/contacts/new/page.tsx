@@ -35,7 +35,7 @@ export default async function NewContactPage({
         contactRoles={contactRoles}
         decisionMakerLevels={decisionMakerLevels}
         contactLineTypes={contactLineTypes}
-        initialValues={{ company }}
+        initialValues={{ companies: company ? [company] : [] }}
       />
     </div>
   );

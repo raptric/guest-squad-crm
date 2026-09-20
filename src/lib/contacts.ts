@@ -67,3 +67,57 @@ export async function normalizeContactInput(
 export function isDuplicateEmailError(error: { code?: string } | null) {
   return error?.code === "23505";
 }
+
+// Parses a list of company ids from a request body, de-duplicated, order preserved
+// (the first id is the contact's primary company).
+export function parseCompanyIds(value: unknown): number[] {
+  if (!Array.isArray(value)) return [];
+  const ids = value.map((v) => parseInt(String(v), 10)).filter((n) => Number.isInteger(n) && n > 0);
+  return [...new Set(ids)];
+}
+
+export async function findMissingCompanies(supabase: SupabaseClient, companyIds: number[]) {
+  const { data } = await supabase.from("companies").select("id").in("id", companyIds).is("deleted_at", null);
+  const found = new Set((data ?? []).map((c) => Number(c.id)));
+  return companyIds.filter((id) => !found.has(id));
+}
+
+// Replaces a contact's company set. The first id becomes the primary company.
+export async function setContactCompanies(supabase: SupabaseClient, contactId: number, companyIds: number[]) {
+  const { error: deleteError } = await supabase
+    .from("contact_companies")
+    .delete()
+    .eq("contact_id", contactId)
+    .not("company_id", "in", `(${companyIds.join(",")})`);
+  if (deleteError) return deleteError;
+
+  // Clear the primary flag first: only one row per contact may be primary at a time.
+  const { error: clearError } = await supabase
+    .from("contact_companies")
+    .update({ is_primary: false })
+    .eq("contact_id", contactId);
+  if (clearError) return clearError;
+
+  const { error } = await supabase.from("contact_companies").upsert(
+    companyIds.map((company_id, index) => ({ contact_id: contactId, company_id, is_primary: index === 0 })),
+    { onConflict: "contact_id,company_id" }
+  );
+  return error;
+}
+
+// Adds one association without touching the others. Becomes primary only if the contact has none.
+export async function addContactToCompany(supabase: SupabaseClient, contactId: number, companyId: number) {
+  const { data: existing } = await supabase
+    .from("contact_companies")
+    .select("company_id, is_primary")
+    .eq("contact_id", contactId);
+
+  if (existing?.some((row) => Number(row.company_id) === companyId)) return { added: false, error: null };
+
+  const { error } = await supabase.from("contact_companies").insert({
+    contact_id: contactId,
+    company_id: companyId,
+    is_primary: !existing?.some((row) => row.is_primary),
+  });
+  return { added: !error, error };
+}

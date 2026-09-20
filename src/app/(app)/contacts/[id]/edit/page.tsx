@@ -18,7 +18,8 @@ export default async function EditContactPage({ params }: { params: Promise<{ id
       .from("contacts")
       .select(
         `id, first_name, last_name, email, phone, job_title, contact_role, decision_maker_level,
-         contact_line_type, linkedin_url, company:company_id ( id, name, company_type )`
+         contact_line_type, linkedin_url,
+         contact_companies ( is_primary, company:company_id ( id, name, company_type ) )`
       )
       .eq("id", id)
       .is("deleted_at", null)
@@ -27,10 +28,12 @@ export default async function EditContactPage({ params }: { params: Promise<{ id
 
   if (!contact) notFound();
 
-  const { company, ...rest } = contact;
+  const { contact_companies, ...rest } = contact;
+  const links = contact_companies as unknown as { is_primary: boolean; company: ContactInitialValues["companies"][number] }[];
   const initialValues: ContactInitialValues = {
     ...rest,
-    company: company as unknown as ContactInitialValues["company"],
+    // Primary company first -- the form treats the first entry as primary.
+    companies: [...links].sort((a, b) => Number(b.is_primary) - Number(a.is_primary)).map((l) => l.company),
   };
 
   return (

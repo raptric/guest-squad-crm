@@ -42,7 +42,7 @@ export default async function CompanyDetailPage({
   const [
     { data: propertyDetails },
     { data: children },
-    { data: contacts },
+    { data: contactLinks },
     { data: ratings },
     { data: hiringSignals },
     { data: signals },
@@ -63,10 +63,12 @@ export default async function CompanyDetailPage({
       .is("deleted_at", null)
       .order("name"),
     supabase
-      .from("contacts")
-      .select("id, first_name, last_name, email, phone, job_title, contact_role, decision_maker_level")
+      .from("contact_companies")
+      .select(
+        "is_primary, contact:contact_id!inner ( id, first_name, last_name, email, phone, job_title, contact_role, decision_maker_level, deleted_at )"
+      )
       .eq("company_id", id)
-      .is("deleted_at", null)
+      .is("contact.deleted_at", null)
       .order("created_at", { ascending: false }),
     supabase.from("company_ratings").select("channel, rating, review_count, captured_at").eq("company_id", id),
     supabase
@@ -90,6 +92,17 @@ export default async function CompanyDetailPage({
       .eq("company_id", id)
       .order("type"),
   ]);
+
+  type CompanyContact = {
+    id: number;
+    first_name: string;
+    last_name: string | null;
+    email: string | null;
+    phone: string | null;
+    job_title: string | null;
+    contact_role: string | null;
+  };
+  const contacts = (contactLinks ?? []).map((l) => l.contact as unknown as CompanyContact);
 
   const { data: painSignals } = propertyDetails
     ? await supabase

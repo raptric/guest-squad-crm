@@ -3,10 +3,10 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ParentCompanyCombobox } from "../companies/parent-company-combobox";
+import { CompanyMultiPicker, type CompanyOption } from "./company-multi-picker";
 
 export type ContactInitialValues = {
-  company: { id: number; name: string; company_type: string } | null;
+  companies: CompanyOption[];
   first_name: string;
   last_name: string | null;
   email: string | null;
@@ -37,13 +37,17 @@ export function ContactForm({
   const isEdit = contactId !== undefined;
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [companies, setCompanies] = useState<CompanyOption[]>(initialValues?.companies ?? []);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
     setLoading(true);
 
-    const payload = Object.fromEntries(new FormData(e.currentTarget).entries());
+    const payload = {
+      ...Object.fromEntries(new FormData(e.currentTarget).entries()),
+      company_ids: companies.map((c) => c.id),
+    };
     const res = await fetch(isEdit ? `/api/contacts/${contactId}` : "/api/contacts", {
       method: isEdit ? "PATCH" : "POST",
       headers: { "Content-Type": "application/json" },
@@ -79,8 +83,8 @@ export function ContactForm({
         <legend className="px-1 text-sm font-semibold text-zinc-900">Contact</legend>
 
         <div className="space-y-1">
-          <label className="text-sm font-medium text-zinc-700">Company</label>
-          <ParentCompanyCombobox name="company_id" initialValue={initialValues?.company} searchAll />
+          <label className="text-sm font-medium text-zinc-700">Companies</label>
+          <CompanyMultiPicker value={companies} onChange={setCompanies} />
         </div>
 
         <div className="grid grid-cols-2 gap-3">
