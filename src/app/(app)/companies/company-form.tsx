@@ -18,6 +18,7 @@ export type CompanyInitialValues = {
   country: string | null;
   zip: string | null;
   phone: string | null;
+  email: string | null;
   lifecycle_stage: string;
   lead_status: string;
   prospect_tier: string | null;
@@ -183,6 +184,12 @@ export function CompanyForm({
           <Field label="Zip" name="zip" defaultValue={initialValues?.zip ?? undefined} />
         </div>
         <Field label="Phone" name="phone" defaultValue={initialValues?.phone ?? undefined} />
+        <Field
+          label="General email"
+          name="email"
+          type="email"
+          defaultValue={initialValues?.email ?? undefined}
+        />
       </fieldset>
 
       {isProperty && (

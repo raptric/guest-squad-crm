@@ -27,7 +27,7 @@ export default async function EditCompanyPage({
     supabase
       .from("companies")
       .select(
-        `id, name, website, company_type, address_line_1, address_line_2, city, state, country, zip, phone,
+        `id, name, website, company_type, address_line_1, address_line_2, city, state, country, zip, phone, email,
          lifecycle_stage, lead_status, prospect_tier, qualification_summary, sdr_signal_summary,
          owner_id, portfolio_size,
          parent_company:parent_company_id ( id, name, company_type )`
@@ -82,6 +82,7 @@ export default async function EditCompanyPage({
     country: company.country,
     zip: company.zip,
     phone: company.phone,
+    email: company.email,
     lifecycle_stage: company.lifecycle_stage,
     lead_status: company.lead_status,
     prospect_tier: company.prospect_tier,

@@ -24,7 +24,7 @@ export default async function CompanyDetailPage({
   const { data: company } = await supabase
     .from("companies")
     .select(
-      `id, name, website, company_type, address_line_1, address_line_2, city, state, country, zip, phone,
+      `id, name, website, company_type, address_line_1, address_line_2, city, state, country, zip, phone, email,
        lifecycle_stage, lead_status, prospect_tier, qualification_summary, sdr_signal_summary, portfolio_size,
        parent_company:parent_company_id ( id, name ),
        owner:owner_id ( id, name )`
@@ -167,6 +167,7 @@ export default async function CompanyDetailPage({
             <dl className="mt-4 space-y-3 border-t border-zinc-100 pt-4 text-sm">
               <Field label="Website" value={company.website} />
               <Field label="Phone" value={company.phone} />
+              <Field label="General email" value={company.email} />
               <Field
                 label="Address"
                 value={[company.address_line_1, company.address_line_2].filter(Boolean).join(", ")}
@@ -398,11 +399,19 @@ export default async function CompanyDetailPage({
   );
 }
 
-function Field({ label, value }: { label: string; value?: string | null }) {
+function Field({ label, value, href }: { label: string; value?: string | null; href?: string | null }) {
   return (
     <div>
       <dt className="text-xs text-zinc-500">{label}</dt>
-      <dd className="text-zinc-900">{value || "—"}</dd>
+      <dd className="text-zinc-900">
+        {value && href ? (
+          <a href={href} target="_blank" rel="noreferrer" className="underline">
+            {value}
+          </a>
+        ) : (
+          value || "—"
+        )}
+      </dd>
     </div>
   );
 }

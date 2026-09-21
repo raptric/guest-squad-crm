@@ -9,6 +9,7 @@ type IncomingHotel = {
   name?: string;
   domain?: string;
   phone?: string;
+  email?: string;
   address?: string;
   city?: string;
   state?: string;
@@ -84,6 +85,7 @@ export async function POST(request: Request) {
         name: h.name,
         website: h.domain || null,
         phone: h.phone || null,
+        email: h.email?.trim().toLowerCase() || null,
         address_line_1: h.address || null,
         city: h.city || null,
         state: h.state || null,
