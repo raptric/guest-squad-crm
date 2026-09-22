@@ -218,11 +218,27 @@ export function parseHiringSignals(section: CanonicalResult["hiring_signal"]): P
 
 export type ParsedSalesSignal = { signal_type: string; strength?: string; source_url?: string };
 
-export function parseSalesSignals(section: CanonicalResult["system_output"]): ParsedSalesSignal[] {
+// signal_type must match the CRM's own sales-signal dropdown (same list the "Add Sales Signal"
+// form uses) -- unlike pain_type, this is NOT recorded-as-is when unrecognized: an unmatched
+// value is dropped with a warning instead, so a signal_type in the CRM is always a value someone
+// could pick from that dropdown, never free text the research runner made up.
+export function parseSalesSignals(section: CanonicalResult["system_output"], validTypes: readonly string[]): { signals: ParsedSalesSignal[]; warnings: string[] } {
+  const warnings: string[] = [];
   // "Other sales signals" -- accepted under system_output.sales_signals or system_output.signals.
   const raw = (section as Record<string, unknown> | undefined)?.sales_signals ?? (section as Record<string, unknown> | undefined)?.signals;
   const items = toItemArray(raw, "signals");
-  return items.map((item) => ({ signal_type: str(item.signal_type ?? item.type) ?? "Other", strength: str(item.strength), source_url: str(item.source_url) }));
+  const signals: ParsedSalesSignal[] = [];
+  for (const item of items) {
+    const signalType = str(item.signal_type ?? item.type);
+    if (!signalType) continue;
+    const matched = validTypes.find((t) => t.toLowerCase() === signalType.toLowerCase());
+    if (!matched) {
+      warnings.push(`sales signal: "${signalType}" is not one of the known signal types -- skipped. Allowed: ${validTypes.join(", ")}`);
+      continue;
+    }
+    signals.push({ signal_type: matched, strength: str(item.strength), source_url: str(item.source_url) });
+  }
+  return { signals, warnings };
 }
 
 export type ParsedContact = {

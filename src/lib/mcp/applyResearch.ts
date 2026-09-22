@@ -1,4 +1,5 @@
 import type { Client } from "pg";
+import { COMPANY_SIGNAL_TYPES } from "@/lib/companies/constants";
 import { matchEnum } from "@/lib/companies/matching";
 import { findCandidatesViaPg, type Candidate } from "./matching";
 import {
@@ -127,10 +128,10 @@ export async function applyResearchResult(
     ["Calls", "Reservations", "After-hours", "Check-in / Access", "OTA Messaging", "WhatsApp", "Guest Requests", "Front Desk Staffing", "Reviews", "Other"]
   );
   const hiringSignals = parseHiringSignals(args.canonicalResult.hiring_signal);
-  const salesSignals = parseSalesSignals(args.canonicalResult.system_output);
+  const { signals: salesSignals, warnings: salesSignalWarnings } = parseSalesSignals(args.canonicalResult.system_output, COMPANY_SIGNAL_TYPES);
   const contacts = parseContacts(args.canonicalResult.contacts);
   const { parent: parentFacts, siblings: siblingFacts } = parsePortfolioDiscovery(args.canonicalResult.portfolio_discovery);
-  warnings.push(...reputationWarnings, ...painWarnings);
+  warnings.push(...reputationWarnings, ...painWarnings, ...salesSignalWarnings);
 
   // ---- 2. Merge company-level profile + relationship facts (fill blanks only) ----
   const companyFieldsUpdated: string[] = [];

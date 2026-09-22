@@ -11,7 +11,7 @@ import {
   normalizeContactPayload,
   type Actor,
 } from "@/lib/contacts";
-import { OFFER_TYPES, RATING_CHANNELS, RESEARCH_OUTCOMES } from "@/lib/companies/constants";
+import { COMPANY_SIGNAL_TYPES, OFFER_TYPES, RATING_CHANNELS, RESEARCH_OUTCOMES } from "@/lib/companies/constants";
 import { withTransaction } from "@/lib/db";
 import { finalizeAuditInTransaction, markAuditFailed, recordSimpleAudit, reserveIdempotencyKey } from "@/lib/mcp/audit";
 import { applyResearchResult, ApplyResearchError } from "@/lib/mcp/applyResearch";
@@ -622,13 +622,33 @@ const mcpHandler = createMcpHandler((server) => {
   );
 
   server.registerTool(
+    "list_signal_types",
+    {
+      title: "List Signal Types",
+      description:
+        "Read-only. Returns the CRM's real dropdown values for a sales signal: " +
+        "signal_type_options (the same list the CRM's own 'Add Sales Signal' form uses) and " +
+        "strength_options (the live strength picklist). Always call this before add_signal -- " +
+        "never invent a signal_type.",
+      inputSchema: {},
+    },
+    async () => {
+      const strength_options = await fetchPicklistValues(supabase, "strength");
+      return json({ signal_type_options: COMPANY_SIGNAL_TYPES, strength_options });
+    }
+  );
+
+  server.registerTool(
     "add_signal",
     {
       title: "Add Sales Signal",
-      description: "Log a company-level sales signal (management change, portfolio expansion, guest complaints, etc.). Free text signal_type -- no fixed list.",
+      description:
+        "Log a company-level sales signal (management change, portfolio expansion, guest " +
+        "complaints, etc.). signal_type must be one of the values from list_signal_types -- an " +
+        "unrecognized value is rejected, not created (use 'Other' if nothing fits).",
       inputSchema: {
         company_id: z.number().int(),
-        signal_type: z.string(),
+        signal_type: z.enum(COMPANY_SIGNAL_TYPES),
         strength: z.string().optional(),
         source_url: z.string().optional(),
       },
