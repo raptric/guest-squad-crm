@@ -126,8 +126,10 @@ const mcpHandler = createMcpHandler((server) => {
         "relationship facts (ownership/operating/management/brand -- only what's already known, " +
         "never inferred), research metadata (identity confidence, completeness, review flags), " +
         "existing ratings/signals/pain-signals/hiring-signals (so weaker new research doesn't " +
-        "overwrite stronger existing evidence), contacts, and parent/child portfolio links. " +
-        "Unknown fields are null -- this endpoint never fabricates a value.",
+        "overwrite stronger existing evidence), the full list of offer recommendations already " +
+        "on file (service/type/rationale -- check this before calling add_offer_recommendation, " +
+        "which rejects a second Primary or a duplicate service), contacts, and parent/child " +
+        "portfolio links. Unknown fields are null -- this endpoint never fabricates a value.",
       inputSchema: { company_id: z.number().int() },
     },
     async ({ company_id }) => {
@@ -179,7 +181,7 @@ const mcpHandler = createMcpHandler((server) => {
         supabase.from("company_ratings").select("*").eq("company_id", company_id),
         supabase.from("company_hiring_signals").select("*").eq("company_id", company_id),
         supabase.from("company_signals").select("*").eq("company_id", company_id),
-        supabase.from("offer_recommendations").select("service, type").eq("company_id", company_id),
+        supabase.from("offer_recommendations").select("id, service, type, rationale, created_at").eq("company_id", company_id).order("type"),
       ]);
 
       const { data: painSignals } = propertyDetailsRow
@@ -256,6 +258,10 @@ const mcpHandler = createMcpHandler((server) => {
         painSignals,
         hiringSignals,
         signals,
+        // Full list, so an existing offer's rationale/type/id is visible before deciding
+        // whether to add or remove one -- primary_sales_angel/secondary_sales_angels above
+        // stay as the flattened summary for backward compatibility.
+        offers: offers ?? [],
         parentCompany,
         children,
       });
