@@ -13,6 +13,7 @@ import {
   parseProfile,
   parseQualification,
   parseReputation,
+  parseSalesSignals,
   parseSystemOutput,
   type CanonicalResult,
 } from "./canonicalResult";
@@ -126,6 +127,7 @@ export async function applyResearchResult(
     ["Calls", "Reservations", "After-hours", "Check-in / Access", "OTA Messaging", "WhatsApp", "Guest Requests", "Front Desk Staffing", "Reviews", "Other"]
   );
   const hiringSignals = parseHiringSignals(args.canonicalResult.hiring_signal);
+  const salesSignals = parseSalesSignals(args.canonicalResult.system_output);
   const contacts = parseContacts(args.canonicalResult.contacts);
   const { parent: parentFacts, siblings: siblingFacts } = parsePortfolioDiscovery(args.canonicalResult.portfolio_discovery);
   warnings.push(...reputationWarnings, ...painWarnings);
@@ -235,53 +237,43 @@ export async function applyResearchResult(
 
   let needsHumanReview = qualification.needs_human_review === true || qualification.research_complete === false;
 
-  // ---- 5. Reputation: upsert by (company_id, channel). Ratings are current-state, refreshed
-  // each run; sub-fields (listing_url, notes...) fill blanks the same way profile facts do. ----
+  // ---- 5. Reputation: upsert by (company_id, channel). Ratings are current-state, always
+  // refreshed with the new value when one is provided. Anything beyond rating/review_count
+  // (native scale, listing URL, notes, confidence) isn't stored here -- it's already preserved
+  // verbatim in mcp_audit_log's stored request for this call. ----
   const ratingsTouched: string[] = [];
   for (const r of ratings) {
-    const { rows: existingRows } = await client.query(
-      "SELECT native_scale, listing_url, source_url, notes, confidence FROM company_ratings WHERE company_id = $1 AND channel = $2",
-      [args.companyId, r.channel]
-    );
-    const existing = existingRows[0];
-    const nativeScale = mergeFact(existing?.native_scale ?? null, r.native_scale).value;
-    const listingUrl = mergeFact(existing?.listing_url ?? null, r.listing_url).value;
-    const sourceUrl = mergeFact(existing?.source_url ?? null, r.source_url).value;
-    const notes = mergeFact(existing?.notes ?? null, r.notes).value;
-    const confidence = r.confidence ?? existing?.confidence ?? null;
     await client.query(
-      `INSERT INTO company_ratings (company_id, channel, rating, review_count, native_scale, listing_url, source_url, notes, confidence, captured_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9, now())
+      `INSERT INTO company_ratings (company_id, channel, rating, review_count, captured_at)
+       VALUES ($1,$2,$3,$4, now())
        ON CONFLICT (company_id, channel) DO UPDATE SET
          rating = COALESCE(EXCLUDED.rating, company_ratings.rating),
          review_count = COALESCE(EXCLUDED.review_count, company_ratings.review_count),
-         native_scale = EXCLUDED.native_scale, listing_url = EXCLUDED.listing_url,
-         source_url = EXCLUDED.source_url, notes = EXCLUDED.notes, confidence = EXCLUDED.confidence,
          captured_at = now(), updated_at = now()`,
-      [args.companyId, r.channel, r.rating ?? null, r.review_count ?? null, nativeScale, listingUrl, sourceUrl, notes, confidence]
+      [args.companyId, r.channel, r.rating ?? null, r.review_count ?? null]
     );
     ratingsTouched.push(r.channel);
   }
 
-  // ---- 6. Pain signals: dedupe by pain_type for this property; fill-blanks merge on evidence. ----
+  // ---- 6. Pain signals: dedupe by pain_type for this property; source_url fills blanks the
+  // same way profile facts do. ----
   const painTouched: string[] = [];
   if (painSignals.length && !property) {
     warnings.push("pain signals were provided but this company has no property profile (not a Property) -- ignored.");
   } else if (property) {
-    const { rows: existingPain } = await client.query<{ id: number; pain_type: string; evidence: string | null; source_url: string | null; confidence: string | null }>(
-      "SELECT id, pain_type, evidence, source_url, confidence FROM property_pain_signals WHERE property_id = $1",
+    const { rows: existingPain } = await client.query<{ id: number; pain_type: string; source_url: string | null }>(
+      "SELECT id, pain_type, source_url FROM property_pain_signals WHERE property_id = $1",
       [property.id]
     );
     for (const p of painSignals) {
       const existing = existingPain.find((e) => e.pain_type === p.pain_type);
       if (existing) {
-        const evidence = mergeFact(existing.evidence, p.evidence).value;
         const sourceUrl = mergeFact(existing.source_url, p.source_url).value;
-        await client.query("UPDATE property_pain_signals SET evidence=$2, source_url=$3, confidence=$4, detected_at=CURRENT_DATE WHERE id=$1", [existing.id, evidence, sourceUrl, p.confidence ?? existing.confidence]);
+        await client.query("UPDATE property_pain_signals SET source_url=$2, detected_at=CURRENT_DATE WHERE id=$1", [existing.id, sourceUrl]);
       } else {
         await client.query(
-          "INSERT INTO property_pain_signals (property_id, pain_type, evidence, source_url, confidence, detected_at) VALUES ($1,$2,$3,$4,$5,CURRENT_DATE)",
-          [property.id, p.pain_type, p.evidence ?? null, p.source_url ?? null, p.confidence ?? null]
+          "INSERT INTO property_pain_signals (property_id, pain_type, source_url, detected_at) VALUES ($1,$2,$3,CURRENT_DATE)",
+          [property.id, p.pain_type, p.source_url ?? null]
         );
       }
       painTouched.push(p.pain_type);
@@ -295,25 +287,45 @@ export async function applyResearchResult(
   for (const h of hiringSignals) {
     const role = h.role ? matchEnum(h.role, validHiringRoles, null) : null;
     if (h.role && !role) warnings.push(`hiring_signal.role "${h.role}" is not a known role -- recorded without a role.`);
-    const { rows: existingHiring } = await client.query(
-      "SELECT id, notes, source_url FROM company_hiring_signals WHERE company_id = $1 AND role IS NOT DISTINCT FROM $2",
+    const { rows: existingHiring } = await client.query<{ id: number; source_url: string | null }>(
+      "SELECT id, source_url FROM company_hiring_signals WHERE company_id = $1 AND role IS NOT DISTINCT FROM $2",
       [args.companyId, role]
     );
     const existing = existingHiring[0];
     const strength = matchEnum(h.strength, validStrengths, null);
     if (existing) {
-      const notes = mergeFact(existing.notes, h.notes).value;
       const sourceUrl = mergeFact(existing.source_url, h.source_url).value;
-      await client.query("UPDATE company_hiring_signals SET job_title=COALESCE($2,job_title), strength=COALESCE($3,strength), notes=$4, source_url=$5, confidence=COALESCE($6,confidence), detected_at=CURRENT_DATE WHERE id=$1", [
-        existing.id, h.job_title ?? null, strength, notes, sourceUrl, h.confidence ?? null,
+      await client.query("UPDATE company_hiring_signals SET job_title=COALESCE($2,job_title), strength=COALESCE($3,strength), source_url=$4, detected_at=CURRENT_DATE WHERE id=$1", [
+        existing.id, h.job_title ?? null, strength, sourceUrl,
       ]);
     } else {
       await client.query(
-        "INSERT INTO company_hiring_signals (company_id, role, job_title, strength, notes, source_url, confidence, detected_at) VALUES ($1,$2,$3,$4,$5,$6,$7,CURRENT_DATE)",
-        [args.companyId, role, h.job_title ?? null, strength, h.notes ?? null, h.source_url ?? null, h.confidence ?? null]
+        "INSERT INTO company_hiring_signals (company_id, role, job_title, strength, source_url, detected_at) VALUES ($1,$2,$3,$4,$5,CURRENT_DATE)",
+        [args.companyId, role, h.job_title ?? null, strength, h.source_url ?? null]
       );
     }
     hiringTouched.push(role ?? h.job_title ?? "unspecified role");
+  }
+
+  // ---- 7b. Other sales signals: dedupe by signal_type. ----
+  const salesSignalsTouched: string[] = [];
+  for (const s of salesSignals) {
+    const strength = matchEnum(s.strength, validStrengths, null);
+    const { rows: existingSales } = await client.query<{ id: number; source_url: string | null }>(
+      "SELECT id, source_url FROM company_signals WHERE company_id = $1 AND signal_type = $2",
+      [args.companyId, s.signal_type]
+    );
+    const existing = existingSales[0];
+    if (existing) {
+      const sourceUrl = mergeFact(existing.source_url, s.source_url).value;
+      await client.query("UPDATE company_signals SET strength=COALESCE($2,strength), source_url=$3, detected_at=CURRENT_DATE WHERE id=$1", [existing.id, strength, sourceUrl]);
+    } else {
+      await client.query(
+        "INSERT INTO company_signals (company_id, signal_type, strength, source_url, detected_at) VALUES ($1,$2,$3,$4,CURRENT_DATE)",
+        [args.companyId, s.signal_type, strength, s.source_url ?? null]
+      );
+    }
+    salesSignalsTouched.push(s.signal_type);
   }
 
   // ---- 8. Contacts ----
@@ -371,9 +383,9 @@ export async function applyResearchResult(
     if (!link) {
       const { rows: anyPrimary } = await client.query("SELECT 1 FROM contact_companies WHERE contact_id = $1 AND is_primary", [contactId]);
       await client.query(
-        `INSERT INTO contact_companies (contact_id, company_id, job_title, contact_role, decision_maker_level, is_primary, source_url, evidence, confidence, added_by_type, added_by_name)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'agent',$10)`,
-        [contactId, args.companyId, c.job_title ?? null, role, dmLevel, anyPrimary.length === 0, c.source_url ?? null, c.evidence ?? null, c.confidence ?? null, args.actorName]
+        `INSERT INTO contact_companies (contact_id, company_id, job_title, contact_role, decision_maker_level, is_primary, source_url, evidence, added_by_type, added_by_name)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'agent',$9)`,
+        [contactId, args.companyId, c.job_title ?? null, role, dmLevel, anyPrimary.length === 0, c.source_url ?? null, c.evidence ?? null, args.actorName]
       );
     } else {
       const canOverwrite = link.added_by_type === "agent" && !link.is_verified;
@@ -396,9 +408,9 @@ export async function applyResearchResult(
     if (hasEmail.length === 0) {
       const { rows: anyPrimaryEmail } = await client.query("SELECT 1 FROM contact_emails WHERE contact_id = $1 AND is_primary", [contactId]);
       await client.query(
-        `INSERT INTO contact_emails (contact_id, email, label, company_id, is_primary, source_url, evidence, confidence, added_by_type, added_by_name)
-         VALUES ($1,$2,'Work',$3,$4,$5,$6,$7,'agent',$8)`,
-        [contactId, email, args.companyId, anyPrimaryEmail.length === 0, c.source_url ?? null, c.evidence ?? null, c.confidence ?? null, args.actorName]
+        `INSERT INTO contact_emails (contact_id, email, label, company_id, is_primary, source_url, evidence, added_by_type, added_by_name)
+         VALUES ($1,$2,'Work',$3,$4,$5,$6,'agent',$7)`,
+        [contactId, email, args.companyId, anyPrimaryEmail.length === 0, c.source_url ?? null, c.evidence ?? null, args.actorName]
       );
     }
     if (c.phone) {
@@ -406,9 +418,9 @@ export async function applyResearchResult(
       if (hasPhone.length === 0) {
         const { rows: anyPrimaryPhone } = await client.query("SELECT 1 FROM contact_phones WHERE contact_id = $1 AND is_primary", [contactId]);
         await client.query(
-          `INSERT INTO contact_phones (contact_id, phone, label, company_id, is_primary, source_url, evidence, confidence, added_by_type, added_by_name)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'agent',$9)`,
-          [contactId, c.phone, c.phone_type ?? "Work", args.companyId, anyPrimaryPhone.length === 0, c.source_url ?? null, c.evidence ?? null, c.confidence ?? null, args.actorName]
+          `INSERT INTO contact_phones (contact_id, phone, label, company_id, is_primary, source_url, evidence, added_by_type, added_by_name)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,'agent',$8)`,
+          [contactId, c.phone, c.phone_type ?? "Work", args.companyId, anyPrimaryPhone.length === 0, c.source_url ?? null, c.evidence ?? null, args.actorName]
         );
       }
     }
@@ -503,8 +515,11 @@ export async function applyResearchResult(
     }
   }
 
-  // ---- 10. Offers: auto-suggest only for a clean Qualified outcome, never overwrite a human
-  // selection, never invent a value outside the real offer_service picklist. ----
+  // ---- 10. Offers: auto-suggest only for a clean Qualified outcome; never invent a value
+  // outside the real offer_service picklist. No human-vs-research provenance is tracked on this
+  // row (explicit decision) -- a research pass may freely replace an existing Primary/Secondary
+  // Offer, including one a human set. mapping_version is folded into the rationale text since
+  // there's no dedicated column for it. ----
   const offerOptions = await picklist(client, "offer_service");
   let primaryOffer: string | null = null;
   const secondaryOffers: string[] = [];
@@ -518,28 +533,30 @@ export async function applyResearchResult(
       siblingCount: siblingsCreated.length + siblingsReused.length,
     });
     const suggestion = suggestOffers(tags, offerOptions);
+    const rationale = (tags: string[]) => `Auto-suggested (mapping ${suggestion.version}) from research evidence: ${tags.join(", ")}`;
+
     if (suggestion.primary) {
-      const { rows: existingOffer } = await client.query("SELECT source FROM offer_recommendations WHERE company_id = $1 AND type = 'Primary'", [args.companyId]);
-      if (!existingOffer[0] || existingOffer[0].source === "research_auto") {
-        await client.query(
-          `INSERT INTO offer_recommendations (company_id, service, type, rationale, source, mapping_version)
-           VALUES ($1,$2,'Primary',$3,'research_auto',$4)
-           ON CONFLICT (company_id, service) DO UPDATE SET type='Primary', rationale=EXCLUDED.rationale, source='research_auto', mapping_version=EXCLUDED.mapping_version, updated_at=now()`,
-          [args.companyId, suggestion.primary, `Auto-suggested from research evidence: ${suggestion.tags.join(", ")}`, suggestion.version]
-        );
-        primaryOffer = suggestion.primary;
-      } else {
-        warnings.push(`Research suggests Primary Offer "${suggestion.primary}", but a human already set one -- not overwritten.`);
+      // A different service can't become the new Primary while the old Primary row still
+      // exists: (company_id, service) is unique and at most one row per company may be
+      // type='Primary' -- clear the old one first if it's changing.
+      const { rows: existingPrimary } = await client.query<{ service: string }>("SELECT service FROM offer_recommendations WHERE company_id = $1 AND type = 'Primary'", [args.companyId]);
+      if (existingPrimary[0] && existingPrimary[0].service !== suggestion.primary) {
+        await client.query("DELETE FROM offer_recommendations WHERE company_id = $1 AND type = 'Primary'", [args.companyId]);
       }
+      await client.query(
+        `INSERT INTO offer_recommendations (company_id, service, type, rationale)
+         VALUES ($1,$2,'Primary',$3)
+         ON CONFLICT (company_id, service) DO UPDATE SET type = 'Primary', rationale = EXCLUDED.rationale, updated_at = now()`,
+        [args.companyId, suggestion.primary, rationale(suggestion.tags)]
+      );
+      primaryOffer = suggestion.primary;
     }
     for (const secondary of suggestion.secondary) {
-      const { rows: existingOffer } = await client.query("SELECT source FROM offer_recommendations WHERE company_id = $1 AND service = $2", [args.companyId, secondary]);
-      if (existingOffer[0] && existingOffer[0].source !== "research_auto") continue; // preserve human selection
       await client.query(
-        `INSERT INTO offer_recommendations (company_id, service, type, rationale, source, mapping_version)
-         VALUES ($1,$2,'Secondary',$3,'research_auto',$4)
-         ON CONFLICT (company_id, service) DO UPDATE SET rationale=EXCLUDED.rationale, source='research_auto', mapping_version=EXCLUDED.mapping_version, updated_at=now()`,
-        [args.companyId, secondary, `Auto-suggested from research evidence: ${suggestion.tags.join(", ")}`, suggestion.version]
+        `INSERT INTO offer_recommendations (company_id, service, type, rationale)
+         VALUES ($1,$2,'Secondary',$3)
+         ON CONFLICT (company_id, service) DO UPDATE SET rationale = EXCLUDED.rationale, updated_at = now()`,
+        [args.companyId, secondary, rationale(suggestion.tags)]
       );
       secondaryOffers.push(secondary);
     }
@@ -569,6 +586,7 @@ export async function applyResearchResult(
     ratingsTouched.length > 0 ||
     painTouched.length > 0 ||
     hiringTouched.length > 0 ||
+    salesSignalsTouched.length > 0 ||
     contactsCreated.length > 0 ||
     contactsUpdated.length > 0 ||
     siblingsCreated.length > 0 ||
@@ -585,7 +603,7 @@ export async function applyResearchResult(
     ratings_created_or_updated: ratingsTouched,
     pain_signals_created_or_updated: painTouched,
     hiring_signals_created_or_updated: hiringTouched,
-    sales_signals_created_or_updated: [],
+    sales_signals_created_or_updated: salesSignalsTouched,
     contacts_created: contactsCreated,
     contacts_updated: contactsUpdated,
     parent: { action: parentAction, company_id: resolvedParentId },

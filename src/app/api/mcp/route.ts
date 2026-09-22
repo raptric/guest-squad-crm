@@ -11,7 +11,7 @@ import {
   normalizeContactPayload,
   type Actor,
 } from "@/lib/contacts";
-import { RATING_CHANNELS, RESEARCH_OUTCOMES } from "@/lib/companies/constants";
+import { OFFER_TYPES, RATING_CHANNELS, RESEARCH_OUTCOMES } from "@/lib/companies/constants";
 import { withTransaction } from "@/lib/db";
 import { finalizeAuditInTransaction, markAuditFailed, recordSimpleAudit, reserveIdempotencyKey } from "@/lib/mcp/audit";
 import { applyResearchResult, ApplyResearchError } from "@/lib/mcp/applyResearch";
@@ -754,108 +754,103 @@ const mcpHandler = createMcpHandler((server) => {
     {
       title: "List Offer Options",
       description:
-        "Read-only. Returns the CRM's real, admin-managed Primary/Secondary Offer values (Settings -> " +
-        "Offer Service). Always call this before set_offers -- never invent or guess an Offer value.",
+        "Read-only. Mirrors the CRM's own 'Add Recommendation' form: service_options is the " +
+        "real, admin-managed offer_service picklist (Settings), type_options is always " +
+        "[Primary, Secondary]. Always call this before add_offer_recommendation -- never invent " +
+        "or guess a value for either dropdown.",
       inputSchema: {},
     },
     async () => {
-      const options = await fetchPicklistValues(supabase, "offer_service");
-      return json({ primary_offer_options: options, secondary_offer_options: options });
+      const service_options = await fetchPicklistValues(supabase, "offer_service");
+      return json({ service_options, type_options: OFFER_TYPES });
     }
   );
 
   server.registerTool(
-    "set_offers",
+    "add_offer_recommendation",
     {
-      title: "Set Offers",
+      title: "Add Offer Recommendation",
       description:
-        "Set the Primary Offer and/or Secondary Offers for a company. Every value must come from " +
-        "list_offer_options (an unknown value is rejected, not created). source='human' means an " +
-        "authorized person is choosing directly and may overwrite anything, including a prior " +
-        "research_auto suggestion; source='research_auto' (the default for this agent) will NOT " +
-        "overwrite a value a human already set -- it's returned in 'warnings' instead. Omit " +
-        "primary_offer/secondary_offers to leave that part unchanged; pass primary_offer: null to " +
-        "clear it (subject to the same human-preservation rule).",
+        "Adds one Offer recommendation -- the exact same action as the CRM's own 'Add " +
+        "Recommendation' form on a company page (service + type + rationale), enforced by the " +
+        "same database rules: a company can have only one Primary recommendation at a time (add " +
+        "a second Primary and you'll get a clear error telling you to remove the existing one " +
+        "first), and the same service can't be recommended twice for one company. service and " +
+        "type must come from list_offer_options -- never invent or guess a value. To replace an " +
+        "existing Primary, call remove_offer_recommendation first, then add the new one.",
       inputSchema: {
         company_id: z.number().int(),
-        primary_offer: z.string().nullable().optional(),
-        secondary_offers: z.array(z.string()).optional(),
-        source: z.enum(["human", "research_auto"]).default("research_auto"),
+        service: z.string(),
+        type: z.enum(OFFER_TYPES),
         rationale: z.string().optional(),
       },
     },
-    async ({ company_id, primary_offer, secondary_offers, source, rationale }) => {
+    async ({ company_id, service, type, rationale }) => {
       const { data: company } = await supabase.from("companies").select("id").eq("id", company_id).is("deleted_at", null).maybeSingle();
       if (!company) return errorResult(`Company ${company_id} not found`);
 
       const options = await fetchPicklistValues(supabase, "offer_service");
-      const requested = [primary_offer, ...(secondary_offers ?? [])].filter((v): v is string => typeof v === "string");
-      const invalid = requested.filter((v) => !options.includes(v));
-      if (invalid.length) return errorResult(`Unknown offer value(s): ${invalid.join(", ")}. Allowed: ${options.join(", ")}`);
+      if (!options.includes(service)) return errorResult(`Unknown offer service "${service}". Allowed: ${options.join(", ")}`);
 
-      const { data: existingRows } = await supabase.from("offer_recommendations").select("service, type, source").eq("company_id", company_id);
-      const canOverwrite = (existingSource: string | undefined) => existingSource !== "human" || source === "human";
-      const warnings: string[] = [];
+      const { data: created, error } = await supabase
+        .from("offer_recommendations")
+        .insert({ company_id, service, type, rationale: rationale || null })
+        .select()
+        .single();
 
-      if (primary_offer !== undefined) {
-        const existingPrimary = existingRows?.find((o) => o.type === "Primary");
-        if (existingPrimary && existingPrimary.service !== primary_offer && !canOverwrite(existingPrimary.source)) {
-          warnings.push(`Primary Offer is human-set to "${existingPrimary.service}" -- not changed.`);
-        } else {
-          if (existingPrimary && existingPrimary.service !== primary_offer) {
-            await supabase.from("offer_recommendations").delete().eq("company_id", company_id).eq("type", "Primary");
-          }
-          if (primary_offer === null) {
-            await supabase.from("offer_recommendations").delete().eq("company_id", company_id).eq("type", "Primary");
-          } else {
-            await supabase
-              .from("offer_recommendations")
-              .upsert(
-                { company_id, service: primary_offer, type: "Primary", source, rationale: rationale ?? null, mapping_version: null },
-                { onConflict: "company_id,service" }
-              );
-          }
+      if (error) {
+        // Same partial-unique-index-on-Primary and unique(company_id, service) constraints the
+        // CRM's own /api/companies/[id]/offers route relies on -- same friendly messages too.
+        if (error.code === "23505") {
+          const message = error.message.includes("one_primary")
+            ? "This company already has a Primary recommendation. Call remove_offer_recommendation on it first, then add the new one."
+            : `"${service}" has already been recommended for this company.`;
+          return errorResult(message);
         }
+        return errorResult(error.message);
       }
 
-      if (secondary_offers !== undefined) {
-        const existingSecondary = (existingRows ?? []).filter((o) => o.type === "Secondary");
-        for (const row of existingSecondary) {
-          if (secondary_offers.includes(row.service)) continue;
-          if (!canOverwrite(row.source)) {
-            warnings.push(`Secondary Offer "${row.service}" is human-set -- not removed.`);
-            continue;
-          }
-          await supabase.from("offer_recommendations").delete().eq("company_id", company_id).eq("service", row.service);
-        }
-        for (const service of secondary_offers) {
-          const existing = existingSecondary.find((o) => o.service === service);
-          if (existing && !canOverwrite(existing.source)) {
-            warnings.push(`Secondary Offer "${service}" is already human-set -- not changed.`);
-            continue;
-          }
-          await supabase
-            .from("offer_recommendations")
-            .upsert({ company_id, service, type: "Secondary", source, rationale: rationale ?? null, mapping_version: null }, { onConflict: "company_id,service" });
-        }
-      }
-
-      const { data: saved } = await supabase.from("offer_recommendations").select("service, type").eq("company_id", company_id);
-      const response = {
-        primary_offer: saved?.find((o) => o.type === "Primary")?.service ?? null,
-        secondary_offers: (saved ?? []).filter((o) => o.type === "Secondary").map((o) => o.service),
-        warnings,
-      };
-      await recordSimpleAudit({ toolName: "set_offers", actorName: source === "human" ? "human" : AGENT.name, companyId: company_id, status: "applied", request: { company_id, primary_offer, secondary_offers, source, rationale }, response, warnings });
+      await recordSimpleAudit({ toolName: "add_offer_recommendation", actorName: AGENT.name, companyId: company_id, status: "applied", request: { company_id, service, type, rationale }, response: created });
       await supabase.from("activities").insert({
         company_id,
         activity_type: "research",
-        actor_type: source === "human" ? "human" : "agent",
-        actor_name: source === "human" ? "human" : AGENT.name,
-        body: `Set offers: primary=${response.primary_offer ?? "none"}, secondary=[${response.secondary_offers.join(", ")}]`,
-        metadata: { source, rationale, warnings },
+        actor_type: "agent",
+        actor_name: AGENT.name,
+        body: `Added ${type} offer recommendation: ${service}`,
+        metadata: { rationale },
       });
-      return json(response);
+      return json({ status: "created", offer: created });
+    }
+  );
+
+  server.registerTool(
+    "remove_offer_recommendation",
+    {
+      title: "Remove Offer Recommendation",
+      description: "Removes one Offer recommendation by service -- the same action as the CRM's own Remove button on an offer card.",
+      inputSchema: { company_id: z.number().int(), service: z.string() },
+    },
+    async ({ company_id, service }) => {
+      const { data: deleted, error } = await supabase
+        .from("offer_recommendations")
+        .delete()
+        .eq("company_id", company_id)
+        .eq("service", service)
+        .select()
+        .maybeSingle();
+      if (error) return errorResult(error.message);
+
+      await recordSimpleAudit({ toolName: "remove_offer_recommendation", actorName: AGENT.name, companyId: company_id, status: "applied", request: { company_id, service }, response: { removed: Boolean(deleted) } });
+      if (deleted) {
+        await supabase.from("activities").insert({
+          company_id,
+          activity_type: "research",
+          actor_type: "agent",
+          actor_name: AGENT.name,
+          body: `Removed ${deleted.type} offer recommendation: ${service}`,
+        });
+      }
+      return json({ status: deleted ? "removed" : "not_found", company_id, service });
     }
   );
 

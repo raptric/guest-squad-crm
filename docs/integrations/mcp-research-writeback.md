@@ -46,18 +46,16 @@ logic (it's the single source of truth — this doc mirrors it, not the other wa
   },
   "reputation": {
     // keyed by channel (google | booking_com | tripadvisor | expedia | hotels_com | vrbo | airbnb | other)
-    // or an array of { channel, ... } entries -- both accepted.
-    "google": {
-      "rating": 4.2, "review_count": 310,
-      "native_scale": "5-point",   // never converted between platforms
-      "listing_url": "...", "source_url": "...", "notes": "...", "confidence": "High"
-    }
+    // or an array of { channel, ... } entries -- both accepted. Only rating/review_count are
+    // stored on company_ratings; native_scale/listing_url/notes/confidence, if sent, are still
+    // preserved verbatim in mcp_audit_log's stored request, just not duplicated onto the row.
+    "google": { "rating": 4.2, "review_count": 310 }
   },
   "pain": [ // or { "signals": [...] }, or a single flat object
-    { "pain_type": "Calls", "evidence": "...", "source_url": "...", "confidence": "..." }
+    { "pain_type": "Calls", "source_url": "..." }
   ],
   "hiring_signal": [ // or { "signals": [...] }, or a single flat object
-    { "role": "Front Desk / Reception", "job_title": "...", "strength": "Medium", "notes": "...", "source_url": "...", "confidence": "..." }
+    { "role": "Front Desk / Reception", "job_title": "...", "strength": "Medium", "source_url": "..." }
   ],
   "qualification": {
     "outcome": "Qualified",       // "Qualified" | "Needs Review" | "Disqualified"
@@ -75,11 +73,11 @@ logic (it's the single source of truth — this doc mirrors it, not the other wa
       "phone": "...", "phone_type": "Work",
       "linkedin_url": "...",
       "contact_role": "General Manager", "decision_maker_level": "Primary Decision Maker",
-      "source_url": "...", "evidence": "...", "confidence": "High"
+      "source_url": "...", "evidence": "..."
     }
   ],
   "portfolio_discovery": {
-    "primary_operating_parent": { "name": "...", "website": "...", "city": "...", "country": "...", "confidence": "...", "source_url": "...", "evidence": "..." },
+    "primary_operating_parent": { "name": "...", "website": "...", "city": "...", "country": "..." },
     "siblings": [ { "name": "...", "website": "...", "city": "...", "state": "...", "country": "...", "phone": "...", "address": "..." } ],
     "confirmed_size": 12 // only applied when the researched company_id itself is a portfolio/group, not a Property
   },
@@ -87,10 +85,18 @@ logic (it's the single source of truth — this doc mirrors it, not the other wa
     "confidence_notes": "...",       // or "notes"
     "research_complete": true,       // accepted here too, as a fallback if not under qualification
     "needs_human_review": false,
-    "sales_signals": [ { "signal_type": "...", "strength": "...", "notes": "...", "source_url": "...", "confidence": "..." } ]
+    "sales_signals": [ { "signal_type": "...", "strength": "...", "source_url": "..." } ]
   }
 }
 ```
+
+`confidence`/`native_scale`/`listing_url`/`notes` fields are accepted wherever a research runner
+sends them but are not stored on any domain table — they're preserved verbatim in
+`mcp_audit_log`'s stored `request` JSON for that call instead of being spread as extra columns
+across `company_ratings`/`property_pain_signals`/`company_hiring_signals`/`company_signals`/
+`contact_companies`/`contact_emails`/`contact_phones` (an earlier version of this feature did add
+those columns; they were removed — see migration `0018` — in favor of the audit log being the
+one place that data lives).
 
 ## Write rules actually enforced
 
@@ -105,11 +111,11 @@ logic (it's the single source of truth — this doc mirrors it, not the other wa
   omitted field is left untouched; a present-but-blank one is not written over an existing value.
   `last_researched` is always server-set (`now()`), never trusted from the payload.
 - **Ratings are upserted per `(company_id, channel)`**, always refreshed with the new
-  rating/review_count when provided (reputation is time-series data, not a static fact); the
-  scale is never converted. Sub-fields (`listing_url`, `notes`, ...) fill blanks the same way
-  profile facts do.
-- **Pain/hiring signals are deduped** (by `pain_type` and by `role` respectively) and merged the
-  same fill-blanks way.
+  rating/review_count when provided (reputation is time-series data, not a static fact). Only
+  `rating`/`review_count`/`captured_at` are stored — no scale-conversion problem to worry about
+  since no other rating field is persisted at all.
+- **Pain/hiring/sales signals are deduped** (by `pain_type`, by `role`, and by `signal_type`
+  respectively); their pre-existing `source_url` column fills blanks the same fill-blanks way.
 - **Contacts** are only created/updated when a name, a real email, `email_verified` is not
   `false`, and a `source_url` or `evidence` are all present; a generic-looking inbox
   (`info@`, `sales@`, `reservations@`, ...) is rejected. Matching, merge-without-clobbering-
@@ -127,11 +133,14 @@ logic (it's the single source of truth — this doc mirrors it, not the other wa
   `siblings.review_required` — never auto-resolved. A newly created sibling is always
   `Property` / `New` / `Lead`, and this function never recurses into researching it (one-hop
   only, matching the spec).
-- **Offers** are only auto-suggested when the outcome is a clean `Qualified` with
-  `research_complete !== false` and no review flag, mapped through
+- **Offers, inside `apply_research_result`,** are only auto-suggested when the outcome is a
+  clean `Qualified` with `research_complete !== false` and no review flag, mapped through
   `src/lib/mcp/offerMapping.ts` onto the *real* `offer_service` picklist (Settings) — never a
-  hardcoded new value. A Offer already set by a human (`source = 'human'`) is never overwritten by
-  a `research_auto` write, from either `apply_research_result` or `set_offers`.
+  hardcoded new value. **There is no human-vs-research provenance tracked on an offer record**
+  (explicit decision): this auto-suggestion step always replaces whatever Primary/Secondary
+  Offer is already set, including one a human chose. See "Known limitations" below. The
+  standalone `add_offer_recommendation`/`remove_offer_recommendation` tools (below) don't
+  auto-suggest anything — they're a direct, deliberate add/remove action, same as the CRM UI.
 
 ## Offer mapping is this MCP's own config, not research-runner output
 
@@ -149,8 +158,9 @@ The evidence→offer mapping runs on a small internal tag vocabulary
 (`deriveEvidenceTags` in `offerMapping.ts`), derived conservatively from the pain/hiring/portfolio
 data this MCP already parses. It's deliberately narrow (a miss just means no suggestion; a false
 positive would mis-categorize a real lead). Edit `offerMapping.ts` directly to extend it —
-`OFFER_MAPPING_VERSION` is stored on every auto-assigned `offer_recommendations` row so a mapping
-change is traceable against historical suggestions.
+`OFFER_MAPPING_VERSION` is folded into the `rationale` text on every auto-assigned
+`offer_recommendations` row (no dedicated column) so a mapping change stays traceable against
+historical suggestions.
 
 ## Atomicity: this requires `DATABASE_URL` to be set on every environment that runs this route
 
@@ -169,7 +179,7 @@ set on Vercel** with the same pooler connection string used locally; if it's mis
 `apply_research_result` will fail (and its `mcp_audit_log` row will correctly show `status:
 'failed'`) while every other tool keeps working normally.
 
-## Idempotency and audit (`mcp_audit_log`, migration `0017`)
+## Idempotency and audit (`mcp_audit_log`, migration `0017`; evidence columns reverted in `0018`)
 
 `idempotency_key` is required on `apply_research_result`. A dedicated table enforces it:
 
@@ -188,27 +198,41 @@ set on Vercel** with the same pooler connection string used locally; if it's mis
    already-`.end()`-safe connection marks that same row `failed` with the error, so the key is
    both visible and retryable.
 
-`set_offers` and every pre-existing mutating tool also write a row (via `recordSimpleAudit`, no
-idempotency key needed there) — nothing bypasses `mcp_audit_log`. The pre-existing
-`activities`-table logging (visible on the Company detail page's timeline) is untouched and kept
-in parallel for the UI.
+`add_offer_recommendation`/`remove_offer_recommendation` and every pre-existing mutating tool
+also write a row (via `recordSimpleAudit`, no idempotency key needed there) — nothing bypasses
+`mcp_audit_log`. The pre-existing `activities`-table logging (visible on the Company detail
+page's timeline) is untouched and kept in parallel for the UI.
 
 ## New tools
+
+Offers deliberately mirror the CRM's own UI (`AddOfferForm`/`OfferList`,
+`src/app/(app)/companies/[id]/add-offer-form.tsx` and `offer-list.tsx`) instead of inventing a
+different interaction model: add one recommendation at a time through the same two dropdowns
+(service, type), remove one at a time, and let the same database constraints
+(`offer_recommendations`'s `UNIQUE(company_id, service)` and the partial unique index limiting
+one `Primary` per company) produce the same errors the UI's own API route already surfaces.
 
 | Tool | Mutates? | Notes |
 |---|---|---|
 | `search_companies` | No | Weighted, explainable match scoring (`matching.ts`) — website domain, normalized name, phone, address, city+country, shared parent. `ambiguous: true` when more than one non-Low candidate exists. |
-| `list_offer_options` | No | Returns the live `offer_service` picklist for both primary and secondary (there is only one real picklist covering both). |
-| `set_offers` | Yes | Validates against `list_offer_options`; `source: 'human'` may overwrite anything, `source: 'research_auto'` (default) never overwrites a human-set value. |
-| `apply_research_result` | Yes | See above. |
+| `list_offer_options` | No | `service_options` (the live `offer_service` picklist) and `type_options` (always `["Primary","Secondary"]`) — one for each of the CRM form's two dropdowns. |
+| `add_offer_recommendation` | Yes | `company_id, service, type, rationale?`. A second Primary, or a duplicate service, is rejected with the same message the CRM UI gives (`23505` → a friendly error), not silently merged or overwritten. |
+| `remove_offer_recommendation` | Yes | `company_id, service`. Idempotent: removing something that isn't there returns `status: "not_found"`, not an error. |
+| `apply_research_result` | Yes | See above — its own internal offer-auto-suggestion step is separate from these two tools and still uses upsert/replace semantics, since it's the sanctioned one-call writeback path, not a UI-mirroring action. |
 
 ## Known limitations, called out explicitly
 
-- **`source: 'human'` on `set_offers` is self-reported by the caller** — this MCP has one shared
-  bearer token for "the agent," with no separate authenticated human identity. Nothing currently
-  stops a caller from claiming `source: 'human'` to bypass the overwrite protection. If that
-  matters, `set_offers` should move behind the app's own authenticated session instead of the
-  agent's shared MCP token.
+- **No protection against `apply_research_result`'s auto-suggestion overwriting a human's own
+  Offer choice.** An earlier version of this feature tracked a `source` column (`human` vs
+  `research_auto`) on `offer_recommendations` specifically to prevent this; it was removed by
+  explicit request (no new columns on existing tables). `apply_research_result`'s internal
+  auto-suggestion step now unconditionally replaces whatever Primary/Secondary Offer is already
+  set. (`add_offer_recommendation`/`remove_offer_recommendation` don't have this problem at all —
+  they never silently overwrite anything; a conflicting add is rejected, exactly like the UI.) If
+  protection for the auto-suggestion path needs to come back, it would need to live somewhere
+  that isn't a new column — e.g. inferred from `mcp_audit_log`'s history for that company, which
+  is slower per call and can't say anything
+  about an offer that predates this audit log.
 - **`company_type` in `property_profile` is never applied** — only validated and, if it disagrees
   with the existing record, reported as a warning. Changing a record's fundamental type from a
   research pass was judged too risky to automate.

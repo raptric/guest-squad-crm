@@ -145,16 +145,7 @@ export function parseSystemOutput(section: CanonicalResult["system_output"]): Pa
   return { confidence_notes: str(section.confidence_notes ?? section.notes) };
 }
 
-export type ParsedRating = {
-  channel: string;
-  rating?: number;
-  review_count?: number;
-  native_scale?: string;
-  listing_url?: string;
-  source_url?: string;
-  notes?: string;
-  confidence?: string;
-};
+export type ParsedRating = { channel: string; rating?: number; review_count?: number };
 
 const RATING_KEY_ALIASES: Record<string, string> = {
   booking: "booking_com",
@@ -186,21 +177,18 @@ export function parseReputation(section: CanonicalResult["reputation"], validCha
     }
     const r = value as Record<string, unknown>;
     if (r.rating === undefined && r.review_count === undefined) continue; // nothing found for this channel
-    ratings.push({
-      channel: key,
-      rating: num(r.rating),
-      review_count: num(r.review_count),
-      native_scale: str(r.native_scale ?? r.scale),
-      listing_url: str(r.listing_url),
-      source_url: str(r.source_url),
-      notes: str(r.notes),
-      confidence: str(r.confidence),
-    });
+    // Anything beyond rating/review_count (native scale, listing URL, notes, confidence) isn't
+    // stored on company_ratings -- it's already preserved verbatim in mcp_audit_log's stored
+    // request for this call, so it isn't dropped, just not duplicated onto the domain table.
+    ratings.push({ channel: key, rating: num(r.rating), review_count: num(r.review_count) });
   }
   return { ratings, warnings };
 }
 
-export type ParsedPainSignal = { pain_type: string; evidence?: string; source_url?: string; confidence?: string };
+// evidence/confidence text from the payload isn't stored on these signal tables -- it's already
+// preserved verbatim in mcp_audit_log's stored request; source_url is the one evidence field
+// these tables carry, and it predates this feature.
+export type ParsedPainSignal = { pain_type: string; source_url?: string };
 
 // Accepts a single object, an array of objects, or { signals: [...] }.
 export function parsePainSignals(section: CanonicalResult["pain"], validTypes: readonly string[]): { signals: ParsedPainSignal[]; warnings: string[] } {
@@ -214,42 +202,27 @@ export function parsePainSignals(section: CanonicalResult["pain"], validTypes: r
     if (!validTypes.some((t) => t.toLowerCase() === painType.toLowerCase())) {
       warnings.push(`pain: "${painType}" is not one of the known pain-signal types -- recorded as-is.`);
     }
-    signals.push({ pain_type: matched, evidence: str(item.evidence ?? item.why_now_hook), source_url: str(item.source_url), confidence: str(item.confidence) });
+    signals.push({ pain_type: matched, source_url: str(item.source_url) });
   }
   return { signals, warnings };
 }
 
-export type ParsedHiringSignal = { role?: string; job_title?: string; strength?: string; notes?: string; source_url?: string; confidence?: string };
+export type ParsedHiringSignal = { role?: string; job_title?: string; strength?: string; source_url?: string };
 
 export function parseHiringSignals(section: CanonicalResult["hiring_signal"]): ParsedHiringSignal[] {
   const items = toItemArray(section, "signals");
   return items
-    .map((item) => ({
-      role: str(item.role),
-      job_title: str(item.job_title ?? item.title),
-      strength: str(item.strength),
-      notes: str(item.notes),
-      source_url: str(item.source_url),
-      confidence: str(item.confidence),
-    }))
+    .map((item) => ({ role: str(item.role), job_title: str(item.job_title ?? item.title), strength: str(item.strength), source_url: str(item.source_url) }))
     .filter((s) => s.role || s.job_title);
 }
 
-export type ParsedSalesSignal = { signal_type: string; strength?: string; notes?: string; source_url?: string; confidence?: string };
+export type ParsedSalesSignal = { signal_type: string; strength?: string; source_url?: string };
 
-export function parseSalesSignals(section: CanonicalResult["system_output"], validTypes: readonly string[]): ParsedSalesSignal[] {
+export function parseSalesSignals(section: CanonicalResult["system_output"]): ParsedSalesSignal[] {
   // "Other sales signals" -- accepted under system_output.sales_signals or system_output.signals.
   const raw = (section as Record<string, unknown> | undefined)?.sales_signals ?? (section as Record<string, unknown> | undefined)?.signals;
   const items = toItemArray(raw, "signals");
-  return items
-    .map((item) => ({
-      signal_type: str(item.signal_type ?? item.type) ?? "Other",
-      strength: str(item.strength),
-      notes: str(item.notes ?? item.description),
-      source_url: str(item.source_url),
-      confidence: str(item.confidence),
-    }))
-    .filter((s) => validTypes.length === 0 || true); // free text list -- validated loosely elsewhere if needed
+  return items.map((item) => ({ signal_type: str(item.signal_type ?? item.type) ?? "Other", strength: str(item.strength), source_url: str(item.source_url) }));
 }
 
 export type ParsedContact = {
@@ -265,7 +238,6 @@ export type ParsedContact = {
   decision_maker_level?: string;
   source_url?: string;
   evidence?: string;
-  confidence?: string;
 };
 
 export function parseContacts(contacts: CanonicalResult["contacts"]): ParsedContact[] {
@@ -287,7 +259,6 @@ export function parseContacts(contacts: CanonicalResult["contacts"]): ParsedCont
       decision_maker_level: str(c.decision_maker_level),
       source_url: str(c.source_url),
       evidence: str(c.evidence),
-      confidence: str(c.confidence),
     };
   });
 }

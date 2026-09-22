@@ -103,7 +103,7 @@ export async function markAuditFailed(idempotencyKey: string, errorMessage: stri
   }
 }
 
-// Non-idempotency-key mutations (the pre-existing simple tools, and set_offers) still get a
+// Non-idempotency-key mutations (the pre-existing simple tools, and add/remove_offer_recommendation) still get a
 // structured audit row -- just without the reservation/replay machinery.
 export async function recordSimpleAudit(entry: {
   toolName: string;
