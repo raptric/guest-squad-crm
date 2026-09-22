@@ -12,6 +12,11 @@ import {
   type Actor,
 } from "@/lib/contacts";
 import { RATING_CHANNELS, RESEARCH_OUTCOMES } from "@/lib/companies/constants";
+import { withTransaction } from "@/lib/db";
+import { finalizeAuditInTransaction, markAuditFailed, recordSimpleAudit, reserveIdempotencyKey } from "@/lib/mcp/audit";
+import { applyResearchResult, ApplyResearchError } from "@/lib/mcp/applyResearch";
+import type { CanonicalResult } from "@/lib/mcp/canonicalResult";
+import { findCandidatesViaSupabase, isAmbiguous } from "@/lib/mcp/matching";
 
 function json(data: unknown) {
   return { content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }] };
@@ -710,6 +715,217 @@ const mcpHandler = createMcpHandler((server) => {
       const { error } = await supabase.from("companies").update(fields).eq("id", company_id);
       if (error) return errorResult(error.message);
       return json({ status: "updated", company_id, ...fields });
+    }
+  );
+
+  server.registerTool(
+    "search_companies",
+    {
+      title: "Search Companies (duplicate check)",
+      description:
+        "Read-only duplicate search. Never creates, updates, merges, links, or deletes anything. " +
+        "Searches by official website/domain, normalized company name, city+country, address, phone, " +
+        "and parent relationship, and returns every plausible candidate with match_reasons and a " +
+        "match_confidence (High/Medium/Low). Call this before find_or_create_company or before treating " +
+        "a portfolio_discovery parent/sibling as new: no confident match means the company may be " +
+        "created; exactly one confident match means reuse it; ambiguous:true (more than one plausible " +
+        "match) means do not create or merge -- treat as Needs Review instead.",
+      inputSchema: {
+        name: z.string().optional(),
+        website: z.string().optional(),
+        city: z.string().optional(),
+        country: z.string().optional(),
+        phone: z.string().optional(),
+        address: z.string().optional(),
+        parent_company_id: z.number().int().optional(),
+      },
+    },
+    async ({ name, website, city, country, phone, address, parent_company_id }) => {
+      if (!name && !website && !phone && !address && !(city && country)) {
+        return errorResult("Provide at least one of: name, website, phone, address, or city+country.");
+      }
+      const candidates = await findCandidatesViaSupabase(supabase, { name, website, city, country, phone, address, parent_company_id });
+      return json({ candidates, ambiguous: isAmbiguous(candidates) });
+    }
+  );
+
+  server.registerTool(
+    "list_offer_options",
+    {
+      title: "List Offer Options",
+      description:
+        "Read-only. Returns the CRM's real, admin-managed Primary/Secondary Offer values (Settings -> " +
+        "Offer Service). Always call this before set_offers -- never invent or guess an Offer value.",
+      inputSchema: {},
+    },
+    async () => {
+      const options = await fetchPicklistValues(supabase, "offer_service");
+      return json({ primary_offer_options: options, secondary_offer_options: options });
+    }
+  );
+
+  server.registerTool(
+    "set_offers",
+    {
+      title: "Set Offers",
+      description:
+        "Set the Primary Offer and/or Secondary Offers for a company. Every value must come from " +
+        "list_offer_options (an unknown value is rejected, not created). source='human' means an " +
+        "authorized person is choosing directly and may overwrite anything, including a prior " +
+        "research_auto suggestion; source='research_auto' (the default for this agent) will NOT " +
+        "overwrite a value a human already set -- it's returned in 'warnings' instead. Omit " +
+        "primary_offer/secondary_offers to leave that part unchanged; pass primary_offer: null to " +
+        "clear it (subject to the same human-preservation rule).",
+      inputSchema: {
+        company_id: z.number().int(),
+        primary_offer: z.string().nullable().optional(),
+        secondary_offers: z.array(z.string()).optional(),
+        source: z.enum(["human", "research_auto"]).default("research_auto"),
+        rationale: z.string().optional(),
+      },
+    },
+    async ({ company_id, primary_offer, secondary_offers, source, rationale }) => {
+      const { data: company } = await supabase.from("companies").select("id").eq("id", company_id).is("deleted_at", null).maybeSingle();
+      if (!company) return errorResult(`Company ${company_id} not found`);
+
+      const options = await fetchPicklistValues(supabase, "offer_service");
+      const requested = [primary_offer, ...(secondary_offers ?? [])].filter((v): v is string => typeof v === "string");
+      const invalid = requested.filter((v) => !options.includes(v));
+      if (invalid.length) return errorResult(`Unknown offer value(s): ${invalid.join(", ")}. Allowed: ${options.join(", ")}`);
+
+      const { data: existingRows } = await supabase.from("offer_recommendations").select("service, type, source").eq("company_id", company_id);
+      const canOverwrite = (existingSource: string | undefined) => existingSource !== "human" || source === "human";
+      const warnings: string[] = [];
+
+      if (primary_offer !== undefined) {
+        const existingPrimary = existingRows?.find((o) => o.type === "Primary");
+        if (existingPrimary && existingPrimary.service !== primary_offer && !canOverwrite(existingPrimary.source)) {
+          warnings.push(`Primary Offer is human-set to "${existingPrimary.service}" -- not changed.`);
+        } else {
+          if (existingPrimary && existingPrimary.service !== primary_offer) {
+            await supabase.from("offer_recommendations").delete().eq("company_id", company_id).eq("type", "Primary");
+          }
+          if (primary_offer === null) {
+            await supabase.from("offer_recommendations").delete().eq("company_id", company_id).eq("type", "Primary");
+          } else {
+            await supabase
+              .from("offer_recommendations")
+              .upsert(
+                { company_id, service: primary_offer, type: "Primary", source, rationale: rationale ?? null, mapping_version: null },
+                { onConflict: "company_id,service" }
+              );
+          }
+        }
+      }
+
+      if (secondary_offers !== undefined) {
+        const existingSecondary = (existingRows ?? []).filter((o) => o.type === "Secondary");
+        for (const row of existingSecondary) {
+          if (secondary_offers.includes(row.service)) continue;
+          if (!canOverwrite(row.source)) {
+            warnings.push(`Secondary Offer "${row.service}" is human-set -- not removed.`);
+            continue;
+          }
+          await supabase.from("offer_recommendations").delete().eq("company_id", company_id).eq("service", row.service);
+        }
+        for (const service of secondary_offers) {
+          const existing = existingSecondary.find((o) => o.service === service);
+          if (existing && !canOverwrite(existing.source)) {
+            warnings.push(`Secondary Offer "${service}" is already human-set -- not changed.`);
+            continue;
+          }
+          await supabase
+            .from("offer_recommendations")
+            .upsert({ company_id, service, type: "Secondary", source, rationale: rationale ?? null, mapping_version: null }, { onConflict: "company_id,service" });
+        }
+      }
+
+      const { data: saved } = await supabase.from("offer_recommendations").select("service, type").eq("company_id", company_id);
+      const response = {
+        primary_offer: saved?.find((o) => o.type === "Primary")?.service ?? null,
+        secondary_offers: (saved ?? []).filter((o) => o.type === "Secondary").map((o) => o.service),
+        warnings,
+      };
+      await recordSimpleAudit({ toolName: "set_offers", actorName: source === "human" ? "human" : AGENT.name, companyId: company_id, status: "applied", request: { company_id, primary_offer, secondary_offers, source, rationale }, response, warnings });
+      await supabase.from("activities").insert({
+        company_id,
+        activity_type: "research",
+        actor_type: source === "human" ? "human" : "agent",
+        actor_name: source === "human" ? "human" : AGENT.name,
+        body: `Set offers: primary=${response.primary_offer ?? "none"}, secondary=[${response.secondary_offers.join(", ")}]`,
+        metadata: { source, rationale, warnings },
+      });
+      return json(response);
+    }
+  );
+
+  server.registerTool(
+    "apply_research_result",
+    {
+      title: "Apply Research Result",
+      description:
+        "The single authoritative writeback for a completed hotel research pass. Accepts the canonical " +
+        "research result (property_profile, identity, ownership, reputation, pain, hiring_signal, " +
+        "qualification, contacts, portfolio_discovery, system_output) and applies it atomically: existing " +
+        "known/verified data is never overwritten by a blank or weaker value; ratings are upserted per " +
+        "channel without ever converting a rating scale; a real, evidence-backed contact is created or " +
+        "merged (never a generic inbox); a confirmed portfolio parent/siblings are matched via the same " +
+        "logic as search_companies and only created when there's no confident existing match; Offers are " +
+        "only auto-suggested for a clean Qualified outcome and never overwrite a human's own Offer choice. " +
+        "idempotency_key is REQUIRED: calling this again with the same key returns the original result " +
+        "(status 'already_applied') instead of re-applying it -- always pass a key unique to this specific " +
+        "research run (e.g. 'research-run-company-<id>-<date>').",
+      inputSchema: {
+        company_id: z.number().int(),
+        idempotency_key: z.string().min(1),
+        canonical_result: z.record(z.string(), z.unknown()),
+      },
+    },
+    async ({ company_id, idempotency_key, canonical_result }) => {
+      const reservation = await reserveIdempotencyKey(
+        "apply_research_result",
+        AGENT.name,
+        company_id,
+        idempotency_key,
+        { company_id, canonical_result }
+      );
+
+      if (reservation.outcome === "blocked") {
+        return errorResult(`A request with idempotency_key "${idempotency_key}" is already being processed -- retry shortly.`);
+      }
+      if (reservation.outcome === "replay") {
+        const status = reservation.status === "applied" ? "already_applied" : reservation.status;
+        return json({ ...(reservation.response as object), status });
+      }
+
+      try {
+        const result = await withTransaction(async (client) => {
+          const r = await applyResearchResult(client, {
+            companyId: company_id,
+            canonicalResult: canonical_result as CanonicalResult,
+            idempotencyKey: idempotency_key,
+            actorName: AGENT.name,
+            auditEventId: reservation.auditEventId,
+          });
+          await finalizeAuditInTransaction(client, idempotency_key, r.status, r, r.warnings);
+          return r;
+        });
+
+        await supabase.from("activities").insert({
+          company_id,
+          activity_type: "research",
+          actor_type: "agent",
+          actor_name: AGENT.name,
+          body: `Applied research result (${result.status})`,
+          metadata: { idempotency_key, audit_event_id: result.audit_event_id, warnings: result.warnings },
+        });
+
+        return json(result);
+      } catch (err) {
+        const message = err instanceof ApplyResearchError || err instanceof Error ? err.message : "apply_research_result failed";
+        await markAuditFailed(idempotency_key, message);
+        return errorResult(`apply_research_result failed: ${message}. Nothing was written; safe to retry with the same idempotency_key.`);
+      }
     }
   );
 });
