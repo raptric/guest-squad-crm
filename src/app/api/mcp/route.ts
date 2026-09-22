@@ -393,38 +393,58 @@ const mcpHandler = createMcpHandler((server) => {
     {
       title: "Update Property Profile",
       description:
-        "Write property classification discovered during research onto an EXISTING company: property_type/portfolio_role (Properties) and/or portfolio_size (portfolio/group companies). Does not touch address fields -- those are only set at creation, never refreshed automatically.",
+        "Write property classification discovered during research onto an EXISTING company: " +
+        "property_type/property_class/rooms_units/portfolio_role (Properties) and/or " +
+        "portfolio_size (portfolio/group companies) -- the same four property_details columns " +
+        "apply_research_result covers. Does not touch address fields -- those are only set at " +
+        "creation, never refreshed automatically.",
       inputSchema: {
         company_id: z.number().int(),
         property_type: z.string().optional(),
+        property_class: z.string().optional(),
+        rooms_units: z.number().int().optional(),
         portfolio_role: z.string().optional(),
         portfolio_size: z.number().int().optional(),
       },
     },
-    async ({ company_id, property_type, portfolio_role, portfolio_size }) => {
+    async ({ company_id, property_type, property_class, rooms_units, portfolio_role, portfolio_size }) => {
       if (portfolio_size !== undefined) {
         const { error } = await supabase.from("companies").update({ portfolio_size }).eq("id", company_id);
         if (error) return errorResult(error.message);
       }
 
-      if (property_type !== undefined || portfolio_role !== undefined) {
-        const [validPropertyTypes, validPortfolioRoles] = await Promise.all([
+      const warnings: string[] = [];
+      if (property_type !== undefined || property_class !== undefined || rooms_units !== undefined || portfolio_role !== undefined) {
+        const [validPropertyTypes, validPropertyClasses, validPortfolioRoles] = await Promise.all([
           fetchPicklistValues(supabase, "property_type"),
+          fetchPicklistValues(supabase, "property_class"),
           fetchPicklistValues(supabase, "portfolio_role"),
         ]);
-        const fields: Record<string, string | null> = {};
-        if (property_type !== undefined) fields.property_type = matchEnum(property_type, validPropertyTypes, null);
-        if (portfolio_role !== undefined) fields.portfolio_role = matchEnum(portfolio_role, validPortfolioRoles, null);
+        // An unrecognized value is dropped with a warning, not written as null -- a bad
+        // submission must never blank out a value that was already correctly set.
+        const fields: Record<string, string | number> = {};
+        const tryMatch = (field: string, value: string | undefined, allowed: string[]) => {
+          if (value === undefined) return;
+          const matched = matchEnum(value, allowed, null);
+          if (matched) fields[field] = matched;
+          else warnings.push(`${field}: "${value}" is not a known value -- left unchanged. Allowed: ${allowed.join(", ")}`);
+        };
+        tryMatch("property_type", property_type, validPropertyTypes);
+        tryMatch("property_class", property_class, validPropertyClasses);
+        tryMatch("portfolio_role", portfolio_role, validPortfolioRoles);
+        if (rooms_units !== undefined) fields.rooms_units = rooms_units;
 
-        const { error, count } = await supabase
-          .from("property_details")
-          .update(fields, { count: "exact" })
-          .eq("company_id", company_id);
-        if (error) return errorResult(error.message);
-        if (count === 0) return errorResult("This company has no property profile -- property_type/portfolio_role only apply to Properties");
+        if (Object.keys(fields).length) {
+          const { error, count } = await supabase
+            .from("property_details")
+            .update(fields, { count: "exact" })
+            .eq("company_id", company_id);
+          if (error) return errorResult(error.message);
+          if (count === 0) return errorResult("This company has no property profile -- property_type/property_class/rooms_units/portfolio_role only apply to Properties");
+        }
       }
 
-      return json({ status: "updated", company_id });
+      return json({ status: "updated", company_id, warnings });
     }
   );
 
