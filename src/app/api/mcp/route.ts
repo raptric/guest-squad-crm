@@ -86,7 +86,7 @@ const mcpHandler = createMcpHandler((server) => {
     {
       title: "List Companies",
       description:
-        "List companies (properties, management companies, portfolios), optionally filtered by lead_status, lifecycle_stage, or company_type. Use this to find leads to research.",
+        "List companies (properties, management companies, portfolios), optionally filtered by lead_status, lifecycle_stage, or company_type. Use this to select the research queue, then call get_company for full detail on each one.",
       inputSchema: {
         lead_status: z.string().optional(),
         lifecycle_stage: z.string().optional(),
@@ -97,7 +97,7 @@ const mcpHandler = createMcpHandler((server) => {
     async ({ lead_status, lifecycle_stage, company_type, limit }) => {
       let query = supabase
         .from("companies")
-        .select("id, name, website, city, state, country, company_type, lifecycle_stage, lead_status, prospect_tier, parent_company_id")
+        .select("id, name, company_type, lead_status, lifecycle_stage")
         .is("deleted_at", null)
         .order("created_at", { ascending: false })
         .limit(limit);
@@ -117,24 +117,37 @@ const mcpHandler = createMcpHandler((server) => {
     {
       title: "Get Company",
       description:
-        "Get full detail for one company: core fields, property profile, ratings, hiring signals, sales signals, pain signals, contacts, offer recommendations, and parent/child portfolio links.",
+        "Get full detail for one company, structured for research: core fields, property profile, " +
+        "relationship facts (ownership/operating/management/brand -- only what's already known, " +
+        "never inferred), research metadata (identity confidence, completeness, review flags), " +
+        "existing ratings/signals/pain-signals/hiring-signals (so weaker new research doesn't " +
+        "overwrite stronger existing evidence), contacts, and parent/child portfolio links. " +
+        "Unknown fields are null -- this endpoint never fabricates a value.",
       inputSchema: { company_id: z.number().int() },
     },
     async ({ company_id }) => {
       const { data: company, error } = await supabase
         .from("companies")
         .select(
-          `*, parent_company:parent_company_id ( id, name, company_type ),
-           owner:owner_id ( id, name )`
+          `id, name, website, phone, address_line_1, city, state, zip, country, company_type,
+           lifecycle_stage, lead_status, prospect_tier, qualification_summary, sdr_signal_summary,
+           brand_name, ownership_entity, operating_entity, management_entity,
+           primary_operating_parent, primary_parent_reason,
+           identity_status, identity_confidence, identity_notes, research_complete,
+           needs_human_review, confidence_notes, last_researched,
+           parent_company:parent_company_id ( id, name, company_type, portfolio_size )`
         )
         .eq("id", company_id)
         .is("deleted_at", null)
         .single();
 
       if (error || !company) return errorResult(error?.message ?? "Company not found");
+      const parentCompany = company.parent_company as unknown as
+        | { id: number; name: string; company_type: string; portfolio_size: number | null }
+        | null;
 
       const [
-        { data: propertyDetails },
+        { data: propertyDetailsRow },
         { data: children },
         { data: contactLinks },
         { data: ratings },
@@ -143,7 +156,7 @@ const mcpHandler = createMcpHandler((server) => {
         { data: offers },
       ] = await Promise.all([
         company.company_type === "Property"
-          ? supabase.from("property_details").select("*").eq("company_id", company_id).single()
+          ? supabase.from("property_details").select("id, property_type, property_class, rooms_units, portfolio_role").eq("company_id", company_id).single()
           : Promise.resolve({ data: null }),
         supabase.from("companies").select("id, name, company_type, city, country").eq("parent_company_id", company_id).is("deleted_at", null),
         supabase
@@ -161,12 +174,44 @@ const mcpHandler = createMcpHandler((server) => {
         supabase.from("company_ratings").select("*").eq("company_id", company_id),
         supabase.from("company_hiring_signals").select("*").eq("company_id", company_id),
         supabase.from("company_signals").select("*").eq("company_id", company_id),
-        supabase.from("offer_recommendations").select("*").eq("company_id", company_id),
+        supabase.from("offer_recommendations").select("service, type").eq("company_id", company_id),
       ]);
 
-      const { data: painSignals } = propertyDetails
-        ? await supabase.from("property_pain_signals").select("*").eq("property_id", propertyDetails.id)
+      const { data: painSignals } = propertyDetailsRow
+        ? await supabase.from("property_pain_signals").select("*").eq("property_id", propertyDetailsRow.id)
         : { data: null };
+
+      // A property's own portfolio size isn't stored on it -- it's the size of the portfolio
+      // (the parent company) it belongs to, if any.
+      const propertyDetails = propertyDetailsRow
+        ? {
+            property_type: propertyDetailsRow.property_type,
+            property_class: propertyDetailsRow.property_class,
+            rooms_units: propertyDetailsRow.rooms_units,
+            portfolio_role: propertyDetailsRow.portfolio_role,
+            portfolio_size: parentCompany?.portfolio_size ?? null,
+          }
+        : null;
+
+      const relationshipFacts = {
+        ownership_entity: company.ownership_entity,
+        operating_entity: company.operating_entity,
+        management_entity: company.management_entity,
+        parent_group_name: parentCompany?.name ?? null,
+        brand_name: company.brand_name,
+        primary_operating_parent: company.primary_operating_parent,
+        primary_parent_reason: company.primary_parent_reason,
+      };
+
+      const researchMetadata = {
+        identity_status: company.identity_status,
+        identity_confidence: company.identity_confidence,
+        identity_notes: company.identity_notes,
+        research_complete: company.research_complete,
+        needs_human_review: company.needs_human_review,
+        confidence_notes: company.confidence_notes,
+        last_researched: company.last_researched,
+      };
 
       // One entry per person; job details and verification are for THIS company's link.
       const contacts = (contactLinks ?? []).map(({ contact, ...link }) => ({
@@ -174,7 +219,41 @@ const mcpHandler = createMcpHandler((server) => {
         this_company: link,
       }));
 
-      return json({ company, propertyDetails, children, contacts, ratings, hiringSignals, signals, offers, painSignals });
+      const primarySalesAngel = (offers ?? []).find((o) => o.type === "Primary")?.service ?? null;
+      const secondarySalesAngels = (offers ?? []).filter((o) => o.type === "Secondary").map((o) => o.service);
+
+      return json({
+        company: {
+          id: company.id,
+          name: company.name,
+          website: company.website,
+          phone: company.phone,
+          address_line_1: company.address_line_1,
+          city: company.city,
+          state: company.state,
+          zip: company.zip,
+          country: company.country,
+          company_type: company.company_type,
+          lifecycle_stage: company.lifecycle_stage,
+          lead_status: company.lead_status,
+          prospect_tier: company.prospect_tier,
+          qualification_summary: company.qualification_summary,
+          sdr_signal_summary: company.sdr_signal_summary,
+          // SDR-managed; visible for context only, not writable by this agent.
+          primary_sales_angel: primarySalesAngel,
+          secondary_sales_angels: secondarySalesAngels,
+        },
+        propertyDetails,
+        relationshipFacts,
+        researchMetadata,
+        contacts,
+        ratings,
+        painSignals,
+        hiringSignals,
+        signals,
+        parentCompany,
+        children,
+      });
     }
   );
 
