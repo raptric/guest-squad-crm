@@ -91,15 +91,23 @@ const mcpHandler = createMcpHandler((server) => {
     {
       title: "List Companies",
       description:
-        "List companies (properties, management companies, portfolios), optionally filtered by lead_status, lifecycle_stage, or company_type. Use this to select the research queue, then call get_company for full detail on each one.",
+        "List companies (properties, management companies, portfolios), optionally filtered by " +
+        "lead_status, lifecycle_stage, company_type, country, state, or city. Use this to select " +
+        "the research queue (e.g. work through one market at a time), then call get_company for " +
+        "full detail on each one. country must match a real value from the country picklist " +
+        "exactly (case-sensitive); state and city are free text and match case-insensitively as " +
+        "a substring, same as the CRM's own Companies list filters.",
       inputSchema: {
         lead_status: z.string().optional(),
         lifecycle_stage: z.string().optional(),
         company_type: z.string().optional(),
+        country: z.string().optional(),
+        state: z.string().optional(),
+        city: z.string().optional(),
         limit: z.number().int().min(1).max(100).default(20),
       },
     },
-    async ({ lead_status, lifecycle_stage, company_type, limit }) => {
+    async ({ lead_status, lifecycle_stage, company_type, country, state, city, limit }) => {
       let query = supabase
         .from("companies")
         .select("id, name, company_type, lead_status, lifecycle_stage")
@@ -110,6 +118,9 @@ const mcpHandler = createMcpHandler((server) => {
       if (lead_status) query = query.eq("lead_status", lead_status);
       if (lifecycle_stage) query = query.eq("lifecycle_stage", lifecycle_stage);
       if (company_type) query = query.eq("company_type", company_type);
+      if (country) query = query.eq("country", country);
+      if (state) query = query.ilike("state", `%${state}%`);
+      if (city) query = query.ilike("city", `%${city}%`);
 
       const { data, error } = await query;
       if (error) return errorResult(error.message);
