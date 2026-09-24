@@ -22,6 +22,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
         <nav className="flex flex-1 flex-col gap-1 p-3">
           <NavLink href="/">Dashboard</NavLink>
+          <NavLink href="/review">Review Queue</NavLink>
           <NavLink href="/companies">Companies</NavLink>
           <NavLink href="/contacts">Contacts</NavLink>
           {user?.role === "super_admin" && <NavLink href="/users">Users</NavLink>}
