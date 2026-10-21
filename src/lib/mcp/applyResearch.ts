@@ -429,6 +429,10 @@ export async function applyResearchResult(
   if (ambiguousContacts.length) needsHumanReview = true;
 
   // ---- 9. Parent / siblings ----
+  // A company must never be matched as its own parent or sibling. This happens when the group
+  // itself is the research target and its own name comes back as primary_operating_parent --
+  // the name match would otherwise link the record to itself.
+  const notSelf = (c: Candidate) => Number(c.company_id) !== Number(company.id);
   let parentAction: ApplyResponse["parent"]["action"] = "not_researched";
   let resolvedParentId: number | null = company.parent_company_id;
   const siblingsCreated: { company_id: number; name: string }[] = [];
@@ -439,7 +443,7 @@ export async function applyResearchResult(
     if (company.parent_company_id) {
       // Already has a parent -- only "reused" if it's the SAME one; otherwise this is exactly
       // the "existing company with a different parent" case: do not overwrite, flag for review.
-      const candidates = await findCandidatesViaPg(client, { name: parentFacts.name, website: parentFacts.website, city: parentFacts.city, country: parentFacts.country });
+      const candidates = (await findCandidatesViaPg(client, { name: parentFacts.name, website: parentFacts.website, city: parentFacts.city, country: parentFacts.country })).filter(notSelf);
       const matchesExisting = candidates.find((c) => c.company_id === company.parent_company_id && c.match_confidence !== "Low");
       if (matchesExisting) {
         parentAction = "unchanged";
@@ -449,7 +453,7 @@ export async function applyResearchResult(
         warnings.push(`portfolio_discovery found a possible parent ("${parentFacts.name}") but this company already has a different parent -- not changed.`);
       }
     } else {
-      const candidates = await findCandidatesViaPg(client, { name: parentFacts.name, website: parentFacts.website, city: parentFacts.city, country: parentFacts.country });
+      const candidates = (await findCandidatesViaPg(client, { name: parentFacts.name, website: parentFacts.website, city: parentFacts.city, country: parentFacts.country })).filter(notSelf);
       const strong = candidates.filter((c) => c.match_confidence !== "Low");
       if (strong.length > 1) {
         parentAction = "ambiguous_needs_review";
@@ -484,7 +488,7 @@ export async function applyResearchResult(
     for (const s of siblingFacts) siblingsReview.push({ name: s.name, reason: "no confirmed parent to attach this sibling to" });
   } else if (resolvedParentId) {
     for (const s of siblingFacts) {
-      const candidates = await findCandidatesViaPg(client, { name: s.name, website: s.website, city: s.city, country: s.country, phone: s.phone, address: s.address });
+      const candidates = (await findCandidatesViaPg(client, { name: s.name, website: s.website, city: s.city, country: s.country, phone: s.phone, address: s.address })).filter(notSelf);
       const strong = candidates.filter((c) => c.match_confidence !== "Low");
       if (strong.length > 1) {
         siblingsReview.push({ name: s.name, reason: "ambiguous match against multiple existing companies" });
