@@ -23,7 +23,7 @@ export default function LoginPage() {
     setLoading(false);
 
     if (error) {
-      setError(error.message);
+      setError(/banned/i.test(error.message) ? "Your account has been blocked. Contact your administrator." : error.message);
       return;
     }
 

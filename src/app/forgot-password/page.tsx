@@ -17,7 +17,9 @@ export default function ForgotPasswordPage() {
 
     const supabase = createClient();
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/reset-password`,
+      // NEXT_PUBLIC_APP_URL has been saved blank in Vercel before; the browser's own origin is
+      // always right for a self-service reset.
+      redirectTo: `${process.env.NEXT_PUBLIC_APP_URL || window.location.origin}/reset-password`,
     });
 
     setLoading(false);

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentUser } from "@/lib/current-user";
+import { getAppOrigin } from "@/lib/app-url";
 
 async function requireSuperAdmin() {
   const user = await getCurrentUser();
@@ -48,7 +49,7 @@ export async function POST(request: Request) {
   const supabaseAdmin = createAdminClient();
   const { data: invited, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(
     email,
-    { redirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/reset-password` }
+    { redirectTo: `${await getAppOrigin()}/reset-password` }
   );
 
   if (inviteError) {
