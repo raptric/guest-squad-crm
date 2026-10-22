@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/current-user";
 import { query } from "@/lib/db";
-import { timeAgo } from "@/lib/time-ago";
+import { timeAgo, timeAgoShort } from "@/lib/time-ago";
 import { AutoRefresh } from "./auto-refresh";
 import { BatchStatusButton } from "./batch-status-button";
 import { abs, deriveState, fetchBatches, fetchLastPushes, pct, RECEIVING_MS } from "./data";
@@ -111,7 +111,7 @@ export default async function ScraperMonitorPage() {
             : { tone: "slate" as const, title: "Quiet right now", detail: last ? `Last company ${timeAgo(last.created_at)}. Nothing is wrong, the scraper is just idle.` : "No scraper data received yet." };
 
   const tiles = [
-    { label: "Last company", value: timeAgo(last?.created_at), hint: last?.campaign_name ?? "No data yet" },
+    { label: "Last company", value: timeAgoShort(last?.created_at), hint: last?.campaign_name ?? "No data yet" },
     { label: "Last hour", value: String(f.h1), hint: "companies received" },
     { label: "Last 24 hours", value: String(f.h24), hint: "companies received" },
     { label: "Last 7 days", value: String(f.d7), hint: "companies received" },
@@ -146,7 +146,7 @@ export default async function ScraperMonitorPage() {
         {tiles.map((t) => (
           <Card key={t.label} className="p-5">
             <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{t.label}</p>
-            <p className="mt-2 text-2xl font-semibold text-slate-900">{t.value}</p>
+            <p className="mt-2 whitespace-nowrap text-2xl font-semibold text-slate-900">{t.value}</p>
             <p className="mt-0.5 truncate text-sm text-slate-500">{t.hint}</p>
           </Card>
         ))}
