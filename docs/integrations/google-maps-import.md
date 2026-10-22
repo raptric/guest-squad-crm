@@ -207,3 +207,13 @@ curl -X POST https://<your-domain>/api/integrations/google-maps/import \
 - **No dedup at all, by design** — see above. If repeat-scrapes of the same listing become
   a real problem, the fix is a `google_place_id` column (Google's own unique per-listing
   ID, which gscraper doesn't currently send) rather than resurrecting website/name matching.
+
+## Monitoring (Scraper Monitor screen)
+
+Admin-only screen at `/scraper-monitor`. Every call to this endpoint — including rejected ones
+(wrong key, bad JSON, missing `campaign_id`) — is recorded in `import_push_log` (time, campaign,
+received / created / skipped counts, error, skipped-row reasons). The screen shows the last
+company received, volume for 1h / 24h / 7d, recent pushes, failures, and each campaign with its
+status: **Receiving** (data in last 15 min), **Active** (last 24h), **Stale** (open campaign with
+nothing for 24h), **Completed** (set manually by an admin). Batches with `origin = 'backfill'` are
+legacy groupings of companies that existed before campaign tracking.

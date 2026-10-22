@@ -25,3 +25,15 @@ export async function withTransaction<T>(fn: (client: Client) => Promise<T>): Pr
 export function isUniqueViolation(err: unknown): boolean {
   return typeof err === "object" && err !== null && (err as { code?: string }).code === "23505";
 }
+
+// One-off read query over a direct connection -- for aggregates (GROUP BY / FILTER) that the
+// PostgREST client can't express.
+export async function query<T = Record<string, unknown>>(text: string, params: unknown[] = []): Promise<T[]> {
+  const client = new Client({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
+  await client.connect();
+  try {
+    return (await client.query(text, params)).rows as T[];
+  } finally {
+    await client.end();
+  }
+}

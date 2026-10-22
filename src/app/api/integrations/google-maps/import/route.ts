@@ -64,14 +64,53 @@ function parseBatch(source: Record<string, unknown> | undefined): BatchSpec | nu
   return spec as BatchSpec;
 }
 
+// What the monitor shows for each call to this endpoint (import_push_log).
+type PushLog = {
+  status_code: number;
+  outcome: "ok" | "partial" | "failed" | "unauthorized";
+  received: number;
+  created: number;
+  skipped: number;
+  error?: string;
+  skipped_detail?: { index: number; error?: string }[];
+  campaign_id?: string;
+  batch_id?: number;
+};
+type Handled = { status: number; payload: unknown; log: PushLog };
+
+const rejected = (status: number, error: string, received = 0, outcome: PushLog["outcome"] = "failed"): Handled => ({
+  status,
+  payload: { error },
+  log: { status_code: status, outcome, received, created: 0, skipped: 0, error },
+});
+
 export async function POST(request: Request) {
+  const startedAt = Date.now();
+  const { status, payload, log } = await handlePost(request);
+  // Best effort: a logging problem must never fail or slow down an import.
+  try {
+    await createAdminClient().from("import_push_log").insert({
+      ...log,
+      skipped_detail: log.skipped_detail?.length ? log.skipped_detail : null,
+      duration_ms: Date.now() - startedAt,
+    });
+  } catch {}
+  return NextResponse.json(payload, { status });
+}
+
+async function handlePost(request: Request): Promise<Handled> {
   const authHeader = request.headers.get("authorization");
   const expected = `Bearer ${process.env.INGEST_API_KEY}`;
   if (!process.env.INGEST_API_KEY || authHeader !== expected) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return rejected(401, "Unauthorized", 0, "unauthorized");
   }
 
-  const body = await request.json();
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return rejected(400, "Request body is not valid JSON");
+  }
   // Accepts either a single hotel object (one gscraper record per request, matching how it
   // likely posts to HubSpot today) or a batch: { "hotels": [ ... ] }.
   const hotels: IncomingHotel[] = Array.isArray(body.hotels)
@@ -81,13 +120,10 @@ export async function POST(request: Request) {
       : [];
 
   if (hotels.length === 0) {
-    return NextResponse.json(
-      { error: "Provide a single hotel object, or { \"hotels\": [...] } for a batch" },
-      { status: 400 }
-    );
+    return rejected(400, "Provide a single hotel object, or { \"hotels\": [...] } for a batch");
   }
   if (hotels.length > MAX_BATCH_SIZE) {
-    return NextResponse.json({ error: `Batch too large, max ${MAX_BATCH_SIZE} per request` }, { status: 400 });
+    return rejected(400, `Batch too large, max ${MAX_BATCH_SIZE} per request`, hotels.length);
   }
 
   const supabase = createAdminClient();
@@ -103,7 +139,7 @@ export async function POST(request: Request) {
   // A record's own flat campaign_* fields (batch-per-hotel posts) override this for that record.
   const requestBatch = parseBatch(body);
   if (typeof requestBatch === "string") {
-    return NextResponse.json({ error: requestBatch }, { status: 400 });
+    return rejected(400, requestBatch, hotels.length);
   }
 
   // First request with a campaign_id creates the batch; later ones attach to it. The first
@@ -237,5 +273,21 @@ export async function POST(request: Request) {
     results,
   };
 
-  return NextResponse.json(summary, { status: 200 });
+  const skippedRows = results.filter((r) => r.status === "skipped");
+  const loggedBatchId = requestBatch ? batchIds.get(requestBatch.campaign_id) : [...batchIds.values()][0];
+  return {
+    status: 200,
+    payload: summary,
+    log: {
+      status_code: 200,
+      outcome: skippedRows.length === 0 ? "ok" : summary.created > 0 ? "partial" : "failed",
+      received: hotels.length,
+      created: summary.created,
+      skipped: summary.skipped,
+      error: skippedRows[0]?.error,
+      skipped_detail: skippedRows.slice(0, 20).map((r) => ({ index: r.index, error: r.error })),
+      campaign_id: requestBatch?.campaign_id ?? [...batchIds.keys()][0],
+      batch_id: loggedBatchId,
+    },
+  };
 }
