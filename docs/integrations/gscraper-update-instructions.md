@@ -30,6 +30,12 @@ operator fills in when starting a campaign, not values scraped from Google Maps.
 | `campaign_city` | No | `Manhattan` | Target city / area |
 | `campaign_notes` | No | `Independent + boutique only, 3-5 stars` | Free text about the batch |
 
+**Optional seventh field — closes the campaign:**
+
+| Field | Example | Notes |
+|---|---|---|
+| `campaign_complete` | `true` | Send `true` **only on the campaign's final push**. Leave it out (or `false`) everywhere else. |
+
 ### Rules
 1. **One `campaign_id` per campaign.** The first push with a new ID creates the batch in the CRM;
    every later push with the same ID joins it. Posting one hotel per request is fine.
@@ -42,6 +48,28 @@ operator fills in when starting a campaign, not values scraped from Google Maps.
 5. If any `campaign_*` field is sent **without** `campaign_id`, the CRM rejects that record
    (HTTP 400 for a single record; that record is `skipped` with an error inside a batch).
    If you send no campaign fields at all, behaviour is exactly as before.
+
+### Closing the campaign automatically
+
+When the campaign has pushed its last hotel, the CRM marks it **Completed** (shown on the Scraper
+Monitor as "Closed by scraper"). Completed is permanent — **a campaign can't be reopened.**
+
+1. Send `campaign_complete: true` on the **last record** (or last batch request) of the run, **or**
+2. after the run finishes, send one extra **closing call** with no hotels:
+   ```json
+   { "campaign_id": "ny-manhattan-2026-10", "campaign_complete": true }
+   ```
+   Prefer this if pushes run in parallel or the last record can fail — it can't be skipped for a
+   bad hotel name.
+
+Rules for the flag:
+- Send it only **after every other push of that campaign has finished** (wait for their responses).
+  Hotels pushed after completion are still saved, but the response includes a `warnings` entry and
+  the Scraper Monitor flags "received data after completed".
+- If the run is stopped or fails halfway, **don't send the flag** — the campaign stays open and
+  turns Stale after 24h without data, so someone checks it.
+- Sending the flag twice is harmless. A completed `campaign_id` can't be reused for a new run —
+  start a new campaign with a new ID.
 
 ## 3. Payload examples
 
@@ -91,7 +119,7 @@ Max 500 hotels per request. Use whichever shape gscraper already uses; both are 
 ```json
 {
   "created": 2, "skipped": 0,
-  "batch": { "batch_id": 3, "campaign_id": "ny-manhattan-2026-10", "companies_in_batch": 2 },
+  "batch": { "batch_id": 3, "campaign_id": "ny-manhattan-2026-10", "status": "open", "companies_in_batch": 2 },
   "results": [ { "index": 0, "status": "created", "company_id": 2860, "batch_id": 3 } ]
 }
 ```
@@ -116,4 +144,6 @@ Expect `"created": 1` and a `batch` block. Tell the CRM owner so the test record
 - [ ] Every pushed record carries the same `campaign_id` for that run.
 - [ ] Hotel address fields (`city`/`state`/`country`) are unchanged and still come from Google Maps.
 - [ ] A test run of ≤3 hotels returns a `batch` block with the right `companies_in_batch`.
+- [ ] The last push (or the closing call) carries `campaign_complete: true` and the response shows `"status": "completed"`.
+- [ ] No hotel is pushed after the flag is sent.
 - [ ] CRM owner confirms the batch and its companies in the database, then deletes the test data.
