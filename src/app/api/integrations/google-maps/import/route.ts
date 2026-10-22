@@ -30,6 +30,8 @@ type IncomingHotel = {
   campaign_state?: string;
   campaign_city?: string;
   campaign_notes?: string;
+  // Set on the campaign's final record to close it (see parseBatch).
+  campaign_complete?: boolean | string | number;
 };
 
 type BatchSpec = {
@@ -39,13 +41,17 @@ type BatchSpec = {
   state: string | null;
   city: string | null;
   notes: string | null;
+  // True when the scraper flags this as the campaign's last push -- the campaign is then closed.
+  complete: boolean;
 };
 
 const clean = (v: unknown) => (typeof v === "string" || typeof v === "number" ? String(v).trim() || null : null);
+const isTrue = (v: unknown) => v === true || (typeof v === "string" || typeof v === "number") && ["true", "yes", "y", "1"].includes(String(v).trim().toLowerCase());
 
 // Reads campaign details from either a `batch` object ({campaign_id, campaign_name, country,
-// state, city, notes}) or the flat campaign_* fields. Returns null when none were sent, an
-// error string when details were sent without the required campaign_id.
+// state, city, notes, complete}) or the flat campaign_* fields (campaign_complete = "last record
+// of the campaign" flag). Returns null when none were sent, an error string when details were
+// sent without the required campaign_id.
 function parseBatch(source: Record<string, unknown> | undefined): BatchSpec | null | string {
   if (!source) return null;
   const nested = (source.batch ?? {}) as Record<string, unknown>;
@@ -58,10 +64,11 @@ function parseBatch(source: Record<string, unknown> | undefined): BatchSpec | nu
     city: pick("city", "campaign_city"),
     notes: pick("notes", "campaign_notes"),
   };
-  if (Object.values(spec).every((v) => v === null)) return null;
+  const complete = isTrue(nested.complete) || isTrue(source.campaign_complete);
+  if (!complete && Object.values(spec).every((v) => v === null)) return null;
   if (!spec.campaign_id) return "campaign_id is required when sending campaign details";
   if (spec.campaign_id.length > 100) return "campaign_id must be 100 characters or fewer";
-  return spec as BatchSpec;
+  return { ...spec, complete } as BatchSpec;
 }
 
 // What the monitor shows for each call to this endpoint (import_push_log).
@@ -119,7 +126,15 @@ async function handlePost(request: Request): Promise<Handled> {
       ? [body]
       : [];
 
-  if (hotels.length === 0) {
+  // Request-level campaign details: `batch` object or flat campaign_* fields on the body.
+  // A record's own flat campaign_* fields (batch-per-hotel posts) override this for that record.
+  const requestBatch = parseBatch(body);
+  if (typeof requestBatch === "string") {
+    return rejected(400, requestBatch, hotels.length);
+  }
+
+  // A call with no hotels is only valid as a "closing" call: campaign_id + campaign_complete.
+  if (hotels.length === 0 && !requestBatch?.complete) {
     return rejected(400, "Provide a single hotel object, or { \"hotels\": [...] } for a batch");
   }
   if (hotels.length > MAX_BATCH_SIZE) {
@@ -134,13 +149,6 @@ async function handlePost(request: Request): Promise<Handled> {
     fetchPicklistValues(supabase, "country"),
   ]);
   const results: { index: number; status: "created" | "skipped"; company_id?: number; batch_id?: number; error?: string }[] = [];
-
-  // Request-level campaign details: `batch` object or flat campaign_* fields on the body.
-  // A record's own flat campaign_* fields (batch-per-hotel posts) override this for that record.
-  const requestBatch = parseBatch(body);
-  if (typeof requestBatch === "string") {
-    return rejected(400, requestBatch, hotels.length);
-  }
 
   // First request with a campaign_id creates the batch; later ones attach to it. The first
   // request defines the details -- they are never overwritten afterwards.
@@ -255,21 +263,56 @@ async function handlePost(request: Request): Promise<Handled> {
     results.push({ index, status: "created", company_id: companyId, ...(batchId ? { batch_id: batchId } : {}) });
   }
 
-  // For the batch this request belongs to: the batch id plus how many companies it holds in total.
-  let batchSummary: { batch_id: number; campaign_id: string; companies_in_batch: number } | undefined;
+  // The scraper flags a campaign's last push (campaign_complete) to close it -- on the request, or on
+  // any record. Done after the inserts so the campaign is only closed once its data is in. Closing
+  // is one-way: there is no reopen, and a flag on an already-completed campaign changes nothing.
+  const completions = new Map<string, BatchSpec>();
+  if (requestBatch?.complete) completions.set(requestBatch.campaign_id, requestBatch);
+  for (const h of hotels) {
+    const own = parseBatch(h as Record<string, unknown>);
+    if (own && typeof own !== "string" && own.complete) completions.set(own.campaign_id, own);
+  }
+  const warnings: string[] = [];
+  for (const spec of completions.values()) {
+    try {
+      const id = await ensureBatch(spec);
+      await supabase
+        .from("import_batches")
+        .update({ status: "completed", completed_at: new Date().toISOString() })
+        .eq("id", id)
+        .eq("status", "open");
+    } catch (e) {
+      warnings.push(`could not complete campaign "${spec.campaign_id}": ${(e as Error).message}`);
+    }
+  }
+
+  // For the batch this request belongs to: id, status, and how many companies it holds in total.
+  let batchSummary:
+    | { batch_id: number; campaign_id: string; status: string; companies_in_batch: number }
+    | undefined;
   if (requestBatch && batchIds.has(requestBatch.campaign_id)) {
     const batchId = batchIds.get(requestBatch.campaign_id)!;
-    const { count } = await supabase
-      .from("companies")
-      .select("id", { count: "exact", head: true })
-      .eq("import_batch_id", batchId);
-    batchSummary = { batch_id: batchId, campaign_id: requestBatch.campaign_id, companies_in_batch: count ?? 0 };
+    const [{ count }, { data: batchRow }] = await Promise.all([
+      supabase.from("companies").select("id", { count: "exact", head: true }).eq("import_batch_id", batchId),
+      supabase.from("import_batches").select("status").eq("id", batchId).single(),
+    ]);
+    batchSummary = {
+      batch_id: batchId,
+      campaign_id: requestBatch.campaign_id,
+      status: batchRow?.status ?? "open",
+      companies_in_batch: count ?? 0,
+    };
+    // Data still arriving for a campaign that was already closed -- kept, but flagged.
+    if (batchSummary.status === "completed" && !requestBatch.complete && results.some((r) => r.status === "created")) {
+      warnings.push(`campaign "${requestBatch.campaign_id}" is already completed; companies were added but it stays completed`);
+    }
   }
 
   const summary = {
     created: results.filter((r) => r.status === "created").length,
     skipped: results.filter((r) => r.status === "skipped").length,
     ...(batchSummary ? { batch: batchSummary } : {}),
+    ...(warnings.length ? { warnings } : {}),
     results,
   };
 

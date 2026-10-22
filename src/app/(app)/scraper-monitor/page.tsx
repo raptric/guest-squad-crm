@@ -21,6 +21,7 @@ type BatchRow = {
   origin: "scraper" | "backfill";
   status: "open" | "completed";
   completed_at: Date | null;
+  completed_by: string | null;
   created_at: Date;
   companies: number;
   last_company: Date | null;
@@ -67,7 +68,7 @@ export default async function ScraperMonitorPage() {
   const [batches, pushStats, pushes, facts, failures, orphans, lastScraped] = await Promise.all([
     query<BatchRow>(`
       SELECT b.id, b.campaign_id, b.campaign_name, b.country, b.state, b.city, b.notes, b.origin, b.status,
-             b.completed_at, b.created_at,
+             b.completed_at, b.completed_by, b.created_at,
              count(c.id)::int AS companies, max(c.created_at) AS last_company,
              count(c.website)::int AS with_website, count(c.phone)::int AS with_phone, count(c.email)::int AS with_email
         FROM import_batches b
@@ -250,6 +251,11 @@ export default async function ScraperMonitorPage() {
                     <td className="px-3 py-3 text-zinc-600">{area(b)}</td>
                     <td className="px-3 py-3">
                       <span className={`rounded px-2 py-0.5 text-xs font-medium ${badge.className}`}>{badge.label}</span>
+                      {b.status === "completed" && b.origin === "scraper" && (
+                        <p className="mt-1 text-xs text-zinc-500" title={abs(b.completed_at)}>
+                          {b.completed_by ? "Closed by an admin" : "Closed by scraper"} {timeAgo(b.completed_at)}
+                        </p>
+                      )}
                     </td>
                     <td className="px-3 py-3 text-zinc-900">{b.companies.toLocaleString()}</td>
                     <td className="px-3 py-3 whitespace-nowrap text-zinc-600" title={abs(new Date(lastActivity))}>
@@ -263,7 +269,7 @@ export default async function ScraperMonitorPage() {
                       <p className="line-clamp-2">{b.notes ?? "-"}</p>
                     </td>
                     <td className="px-3 py-3">
-                      <BatchStatusButton id={Number(b.id)} status={b.status} />
+                      {b.status === "open" && <BatchStatusButton id={Number(b.id)} name={b.campaign_name} />}
                     </td>
                   </tr>
                 );
@@ -273,7 +279,7 @@ export default async function ScraperMonitorPage() {
         </div>
         <p className="text-xs text-zinc-500">
           Receiving = data in the last 15 minutes. Active = data in the last 24 hours. Stale = open campaign with nothing for 24 hours.
-          Completed is set by an admin after checking the batch. Backfill = existing companies grouped after the fact.
+          Completed is set when the scraper sends its last-record flag (or by an admin) and is permanent. Backfill = existing companies grouped after the fact.
         </p>
       </section>
 

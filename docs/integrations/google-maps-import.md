@@ -106,6 +106,7 @@ skipped record if it was on a hotel inside `hotels`).
 | `campaign_state` | `state` | Target state / region. |
 | `campaign_city` | `city` | Target city / area. |
 | `campaign_notes` | `notes` | Free-text notes about the campaign or batch. |
+| `campaign_complete` | `complete` | Set `true` on the campaign's **last push** to close it (see below). |
 
 Send them either flat on each record (easiest for a field-mapping scraper — set each as a
 static value in the mapping) or once in a top-level `batch` object:
@@ -129,6 +130,23 @@ static value in the mapping) or once in a top-level `batch` object:
   own `address` / `city` / `state` / `country` fields.
 - Each created company gets `companies.import_batch_id`. With no campaign fields, nothing
   changes from before (`import_batch_id` stays empty).
+
+### Closing a campaign (`campaign_complete`)
+
+Send `campaign_complete: true` (flat) or `"complete": true` (inside `batch`) on the campaign's
+**last** push. After that request's records are saved, the campaign is marked **Completed**
+(`import_batches.status`, `completed_at`; `completed_by` stays empty = closed by the scraper).
+
+- Accepted values: `true`, `"true"`, `"yes"`, `"y"`, `1`. Anything else (or omitted) = not complete.
+- **One-way.** There is no reopen. Sending the flag again is harmless (no change).
+- Needs `campaign_id`; without it the request is rejected (`400`).
+- **Closing call:** if the last record might be skipped, or you'd rather not tag the last hotel,
+  send a request with **no hotels** — just `{ "campaign_id": "...", "campaign_complete": true }`.
+  It creates the campaign if it doesn't exist yet and completes it.
+- Records pushed **after** completion are still saved (no data is dropped), but the campaign stays
+  completed and the response carries a `warnings` entry; the Scraper Monitor flags it too.
+  So send the flag only after every other push of the campaign has finished.
+- Response `batch` block includes `"status": "open" | "completed"`.
 
 ## What happens on the server
 
@@ -215,5 +233,5 @@ Admin-only screen at `/scraper-monitor`. Every call to this endpoint — includi
 received / created / skipped counts, error, skipped-row reasons). The screen shows the last
 company received, volume for 1h / 24h / 7d, recent pushes, failures, and each campaign with its
 status: **Receiving** (data in last 15 min), **Active** (last 24h), **Stale** (open campaign with
-nothing for 24h), **Completed** (set manually by an admin). Batches with `origin = 'backfill'` are
+nothing for 24h), **Completed** (set by the scraper's `campaign_complete` flag, or manually by an admin; permanent). Batches with `origin = 'backfill'` are
 legacy groupings of companies that existed before campaign tracking.
