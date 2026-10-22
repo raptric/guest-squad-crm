@@ -22,7 +22,7 @@ export default async function UsersPage() {
   const supabase = await createClient();
   const { data: users } = await supabase
     .from("users")
-    .select("id, name, email, role, auth_user_id, created_at")
+    .select("id, name, email, role, phone, job_title, auth_user_id, created_at")
     .order("created_at", { ascending: false });
 
   // Sign-in state lives in Supabase Auth (accepted invite / banned), not in our users table.
@@ -60,14 +60,26 @@ export default async function UsersPage() {
             const badge = STATUS_BADGE[status];
             return (
               <tr key={u.id} className="border-b border-zinc-100 align-top">
-                <td className="py-3 pr-4 text-zinc-900">{u.name}</td>
-                <td className="py-3 pr-4 text-zinc-600">{u.email}</td>
+                <td className="py-3 pr-4 text-zinc-900">
+                  {u.name}
+                  {u.job_title && <div className="text-xs text-zinc-500">{u.job_title}</div>}
+                </td>
+                <td className="py-3 pr-4 text-zinc-600">
+                  {u.email}
+                  {u.phone && <div className="text-xs text-zinc-500">{u.phone}</div>}
+                </td>
                 <td className="py-3 pr-4 text-zinc-600">{u.role}</td>
                 <td className="py-3 pr-4">
                   <span className={`rounded px-2 py-0.5 text-xs font-medium ${badge.className}`}>{badge.label}</span>
                 </td>
                 <td className="py-3">
-                  <UserActions userId={u.id} name={u.name} status={status} isSelf={Number(u.id) === Number(currentUser?.id)} />
+                  <UserActions
+                    userId={u.id}
+                    name={u.name}
+                    email={u.email}
+                    phone={u.phone ?? ""}
+                    jobTitle={u.job_title ?? ""}
+                    status={status} isSelf={Number(u.id) === Number(currentUser?.id)} />
                 </td>
               </tr>
             );

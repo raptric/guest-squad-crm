@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentUser } from "@/lib/current-user";
 import { getAppOrigin } from "@/lib/app-url";
+import { parseProfileInput } from "@/lib/profile-fields";
 
 // "Block" uses Supabase's native auth ban rather than a column of our own: a banned user can't
 // sign in, an already-logged-in session is rejected on its very next request (the app validates
@@ -14,6 +15,28 @@ type Action = "resend_invite" | "reset_password" | "block" | "unblock";
 const ACTIONS: Action[] = ["resend_invite", "reset_password", "block", "unblock"];
 
 const fail = (error: string, status: number) => NextResponse.json({ error }, { status });
+
+// Admin edit of another user's basic profile (name, phone, job title). Email and role are not
+// editable here.
+export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const actor = await getCurrentUser();
+  if (!actor || actor.role !== "super_admin") return fail("Forbidden", 403);
+
+  const parsed = parseProfileInput(await request.json());
+  if ("error" in parsed) return fail(parsed.error, 400);
+
+  const { id } = await params;
+  const { data, error } = await createAdminClient()
+    .from("users")
+    .update(parsed.value)
+    .eq("id", id)
+    .select("id, name, email, role, phone, job_title")
+    .maybeSingle();
+  if (error) return fail(error.message, 500);
+  if (!data) return fail("User not found", 404);
+
+  return NextResponse.json({ user: data });
+}
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const actor = await getCurrentUser();

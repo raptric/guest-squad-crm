@@ -2,14 +2,32 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { EditUserDialog } from "./edit-user-dialog";
 
 export type UserStatus = "active" | "pending" | "blocked";
 type Action = "resend_invite" | "reset_password" | "block" | "unblock";
 
 const button = "rounded-md border border-zinc-300 px-2.5 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50";
 
-export function UserActions({ userId, name, status, isSelf }: { userId: number; name: string; status: UserStatus; isSelf: boolean }) {
+export function UserActions({
+  userId,
+  name,
+  email,
+  phone,
+  jobTitle,
+  status,
+  isSelf,
+}: {
+  userId: number;
+  name: string;
+  email: string;
+  phone: string;
+  jobTitle: string;
+  status: UserStatus;
+  isSelf: boolean;
+}) {
   const router = useRouter();
+  const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState<Action | null>(null);
   const [message, setMessage] = useState<{ text: string; ok: boolean } | null>(null);
 
@@ -31,6 +49,9 @@ export function UserActions({ userId, name, status, isSelf }: { userId: number; 
   return (
     <div className="space-y-1">
       <div className="flex flex-wrap gap-2">
+        <button className={button} disabled={busy !== null} onClick={() => setEditing(true)}>
+          Edit
+        </button>
         {status === "pending" && (
           <button className={button} disabled={busy !== null} onClick={() => run("resend_invite")}>
             {busy === "resend_invite" ? "Sending..." : "Re-send invite"}
@@ -58,6 +79,9 @@ export function UserActions({ userId, name, status, isSelf }: { userId: number; 
         )}
       </div>
       {message && <p className={`text-xs ${message.ok ? "text-green-700" : "text-red-600"}`}>{message.text}</p>}
+      {editing && (
+        <EditUserDialog userId={userId} email={email} name={name} phone={phone} jobTitle={jobTitle} onClose={() => setEditing(false)} />
+      )}
     </div>
   );
 }

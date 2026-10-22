@@ -7,13 +7,19 @@ export function ProfileForm({
   name,
   email,
   role,
+  phone,
+  jobTitle,
 }: {
   name: string;
   email: string;
   role: string;
+  phone: string;
+  jobTitle: string;
 }) {
   const router = useRouter();
   const [value, setValue] = useState(name);
+  const [phoneValue, setPhoneValue] = useState(phone);
+  const [jobTitleValue, setJobTitleValue] = useState(jobTitle);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -27,7 +33,7 @@ export function ProfileForm({
     const res = await fetch("/api/profile", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: value }),
+      body: JSON.stringify({ name: value, phone: phoneValue, job_title: jobTitleValue }),
     });
 
     setSaving(false);
@@ -62,6 +68,33 @@ export function ProfileForm({
           id="name"
           value={value}
           onChange={(e) => setValue(e.target.value)}
+          className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-zinc-500 focus:outline-none"
+        />
+      </div>
+
+      <div className="space-y-1">
+        <label htmlFor="job_title" className="text-sm font-medium text-zinc-700">
+          Job title
+        </label>
+        <input
+          id="job_title"
+          value={jobTitleValue}
+          onChange={(e) => setJobTitleValue(e.target.value)}
+          maxLength={100}
+          className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-zinc-500 focus:outline-none"
+        />
+      </div>
+
+      <div className="space-y-1">
+        <label htmlFor="phone" className="text-sm font-medium text-zinc-700">
+          Phone
+        </label>
+        <input
+          id="phone"
+          type="tel"
+          value={phoneValue}
+          onChange={(e) => setPhoneValue(e.target.value)}
+          maxLength={50}
           className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-zinc-500 focus:outline-none"
         />
       </div>

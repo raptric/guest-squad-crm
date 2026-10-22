@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { parseProfileInput } from "@/lib/profile-fields";
 
 export async function PATCH(request: Request) {
   const supabase = await createClient();
@@ -11,16 +12,16 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { name } = await request.json();
-  if (!name || typeof name !== "string") {
-    return NextResponse.json({ error: "name is required" }, { status: 400 });
+  const parsed = parseProfileInput(await request.json());
+  if ("error" in parsed) {
+    return NextResponse.json({ error: parsed.error }, { status: 400 });
   }
 
   const { data, error } = await supabase
     .from("users")
-    .update({ name })
+    .update(parsed.value)
     .eq("auth_user_id", user.id)
-    .select("id, name, email, role")
+    .select("id, name, email, role, phone, job_title")
     .single();
 
   if (error) {
