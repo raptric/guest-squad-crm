@@ -85,10 +85,16 @@ type PushLog = {
 };
 type Handled = { status: number; payload: unknown; log: PushLog };
 
-const rejected = (status: number, error: string, received = 0, outcome: PushLog["outcome"] = "failed"): Handled => ({
+const rejected = (
+  status: number,
+  error: string,
+  received = 0,
+  outcome: PushLog["outcome"] = "failed",
+  campaign_id?: string
+): Handled => ({
   status,
   payload: { error },
-  log: { status_code: status, outcome, received, created: 0, skipped: 0, error },
+  log: { status_code: status, outcome, received, created: 0, skipped: 0, error, campaign_id },
 });
 
 export async function POST(request: Request) {
@@ -135,7 +141,15 @@ async function handlePost(request: Request): Promise<Handled> {
 
   // A call with no hotels is only valid as a "closing" call: campaign_id + campaign_complete.
   if (hotels.length === 0 && !requestBatch?.complete) {
-    return rejected(400, "Provide a single hotel object, or { \"hotels\": [...] } for a batch");
+    // Field names only (never values) so the monitor can show what the caller actually sent.
+    const fields = body && typeof body === "object" && !Array.isArray(body) ? Object.keys(body).join(", ") : typeof body;
+    return rejected(
+      400,
+      `Provide a single hotel object (with name), or { "hotels": [...] } for a batch. Received fields: ${fields || "none"}`,
+      0,
+      "failed",
+      requestBatch?.campaign_id
+    );
   }
   if (hotels.length > MAX_BATCH_SIZE) {
     return rejected(400, `Batch too large, max ${MAX_BATCH_SIZE} per request`, hotels.length);
