@@ -10,6 +10,8 @@ import { AddActivityForm } from "./add-activity-form";
 import { AddOfferForm } from "./add-offer-form";
 import { OfferList } from "./offer-list";
 import { ChannelBadge, channelLabel } from "./channel-badge";
+import { VerifyBox } from "./verify-box";
+import { timeAgo } from "@/lib/time-ago";
 
 export const dynamic = "force-dynamic";
 
@@ -25,7 +27,7 @@ export default async function CompanyDetailPage({
     .from("companies")
     .select(
       `id, name, website, company_type, address_line_1, address_line_2, city, state, country, zip, phone, email,
-       lifecycle_stage, lead_status, prospect_tier, qualification_summary, sdr_signal_summary, portfolio_size,
+       lifecycle_stage, lead_status, verification_status, prospect_tier, qualification_summary, sdr_signal_summary, portfolio_size,
        parent_company:parent_company_id ( id, name ),
        owner:owner_id ( id, name )`
     )
@@ -34,6 +36,20 @@ export default async function CompanyDetailPage({
     .single();
 
   if (!company) notFound();
+
+  // Latest human review (shown in the Verify box); the box only appears for Qualified companies
+  // or ones that were already verified.
+  const { data: lastReviewRow } = await supabase
+    .from("company_reviews")
+    .select("reviewer_name, had_errors, notes, created_at")
+    .eq("company_id", id)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const lastReview = lastReviewRow
+    ? { reviewer: lastReviewRow.reviewer_name, when: timeAgo(lastReviewRow.created_at), hadErrors: lastReviewRow.had_errors, notes: lastReviewRow.notes }
+    : null;
+  const showVerify = company.lead_status === "Qualified" || company.verification_status !== null;
 
   const parentCompany = company.parent_company as unknown as { id: number; name: string } | null;
   const owner = company.owner as unknown as { id: number; name: string } | null;
@@ -150,6 +166,15 @@ export default async function CompanyDetailPage({
               <span className="rounded bg-zinc-100 px-2 py-0.5">{company.company_type}</span>
               <span className="rounded bg-zinc-100 px-2 py-0.5">{company.lifecycle_stage}</span>
               <span className="rounded bg-zinc-100 px-2 py-0.5">{company.lead_status}</span>
+              {company.verification_status && (
+                <span
+                  className={`rounded px-2 py-0.5 ${
+                    company.verification_status === "Ready for Outreach" ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"
+                  }`}
+                >
+                  {company.verification_status}
+                </span>
+              )}
               {company.prospect_tier && (
                 <span className="rounded bg-zinc-100 px-2 py-0.5">{company.prospect_tier}</span>
               )}
@@ -292,6 +317,8 @@ export default async function CompanyDetailPage({
 
         {/* Right: contacts, signals, activity */}
         <aside className="space-y-4">
+          {showVerify && <VerifyBox companyId={Number(id)} status={company.verification_status} last={lastReview} />}
+
           <section className="space-y-3 rounded-lg border border-zinc-200 bg-white p-5">
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-semibold text-zinc-900">Contacts ({contacts?.length ?? 0})</h2>
