@@ -78,7 +78,7 @@ export function EditUserDialog({
             <option value="user">User</option>
             <option value="super_admin">Super admin</option>
           </select>
-          {isSelf && <p className="text-xs text-zinc-500">You can't change your own role.</p>}
+          {isSelf && <p className="text-xs text-zinc-500">You can&apos;t change your own role.</p>}
         </div>
 
         <div className="space-y-1">

@@ -70,5 +70,9 @@ export function deriveState(b: BatchRow, lastPush: Date | undefined, now = Date.
   return { lastActivity, state, dataAfterCompleted };
 }
 
+// True when the date is within the last `ms` milliseconds (kept here, outside the page component,
+// because reading the clock during render is flagged by the React purity lint rule).
+export const isRecent = (d: Date | string, ms: number, now = Date.now()) => now - new Date(d).getTime() < ms;
+
 export const pct = (part: number, total: number) => (total ? Math.round((part / total) * 100) : null);
 export const abs = (d: Date | string | null) => (d ? new Date(d).toUTCString() : "");

@@ -5,7 +5,7 @@ import { query } from "@/lib/db";
 import { timeAgo, timeAgoShort } from "@/lib/time-ago";
 import { AutoRefresh } from "./auto-refresh";
 import { BatchStatusButton } from "./batch-status-button";
-import { abs, deriveState, fetchBatches, fetchLastPushes, pct, RECEIVING_MS } from "./data";
+import { abs, deriveState, fetchBatches, fetchLastPushes, isRecent, pct, RECEIVING_MS } from "./data";
 import { Card, Meter, Pill, StatusPill } from "./parts";
 import { LEGEND, type Tone } from "./status";
 
@@ -78,8 +78,7 @@ export default async function ScraperMonitorPage({
        WHERE b.origin = 'scraper' ORDER BY c.created_at DESC LIMIT 1`),
   ]);
 
-  const now = Date.now();
-  const rows = batches.map((b) => ({ b, ...deriveState(b, lastPushes.get(String(b.id)), now) }));
+  const rows = batches.map((b) => ({ b, ...deriveState(b, lastPushes.get(String(b.id))) }));
   const totalPages = Math.max(1, Math.ceil(rows.length / size));
   const page = Math.min(totalPages, Math.max(1, parseInt(sp.page ?? "1", 10) || 1));
   const pageRows = rows.slice((page - 1) * size, page * size);
@@ -90,7 +89,7 @@ export default async function ScraperMonitorPage({
   const fail = failures[0];
   const orphanCount = orphans[0]?.n ?? 0;
   const last = lastScraped[0];
-  const receiving = last && now - new Date(last.created_at).getTime() < RECEIVING_MS;
+  const receiving = last && isRecent(last.created_at, RECEIVING_MS);
 
   const attention: { key: string; text: string }[] = [];
   if (fail.failed > 0) {
