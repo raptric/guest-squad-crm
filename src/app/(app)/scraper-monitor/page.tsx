@@ -6,7 +6,7 @@ import { timeAgo, timeAgoShort } from "@/lib/time-ago";
 import { AutoRefresh } from "./auto-refresh";
 import { BatchStatusButton } from "./batch-status-button";
 import { abs, deriveState, fetchBatches, fetchLastPushes, pct, RECEIVING_MS } from "./data";
-import { BackfillPill, Card, Meter, Pill, StatusPill } from "./parts";
+import { Card, Meter, Pill, StatusPill } from "./parts";
 import { LEGEND, type Tone } from "./status";
 
 export const dynamic = "force-dynamic";
@@ -37,9 +37,18 @@ const BANNER = {
   slate: { box: "border-slate-200 bg-slate-50 text-slate-800", dot: "bg-slate-400" },
 };
 
-export default async function ScraperMonitorPage() {
+const PAGE_SIZES = [10, 25, 50, 100];
+
+export default async function ScraperMonitorPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ page?: string; size?: string }>;
+}) {
   const currentUser = await getCurrentUser();
   if (currentUser?.role !== "super_admin") redirect("/");
+
+  const sp = await searchParams;
+  const size = PAGE_SIZES.includes(Number(sp.size)) ? Number(sp.size) : 10;
 
   const [batches, lastPushes, pushes, facts, failures, orphans, lastScraped] = await Promise.all([
     fetchBatches(),
@@ -71,6 +80,10 @@ export default async function ScraperMonitorPage() {
 
   const now = Date.now();
   const rows = batches.map((b) => ({ b, ...deriveState(b, lastPushes.get(String(b.id)), now) }));
+  const totalPages = Math.max(1, Math.ceil(rows.length / size));
+  const page = Math.min(totalPages, Math.max(1, parseInt(sp.page ?? "1", 10) || 1));
+  const pageRows = rows.slice((page - 1) * size, page * size);
+  const pageHref = (p: number, s = size) => `/scraper-monitor?${new URLSearchParams({ page: String(p), size: String(s) })}`;
   const staleBatches = rows.filter((r) => r.state === "stale" && r.b.origin === "scraper");
   const afterCompleted = rows.filter((r) => r.dataAfterCompleted);
   const f = facts[0];
@@ -172,7 +185,7 @@ export default async function ScraperMonitorPage() {
           <p className="text-sm text-slate-500">Click a campaign name to see every company it brought in.</p>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {LEGEND.map(({ tone, text }) => (
             <div key={tone.label} className={`space-y-2 rounded-xl border p-4 ${tone.card}`}>
               <Pill tone={tone} />
@@ -186,43 +199,39 @@ export default async function ScraperMonitorPage() {
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-medium uppercase tracking-wide text-slate-500">
                 <th className="px-5 py-3">Campaign</th>
+                <th className="px-3 py-3 text-right">Companies</th>
                 <th className="px-3 py-3">Country</th>
                 <th className="px-3 py-3">State</th>
                 <th className="px-3 py-3">City</th>
                 <th className="px-3 py-3">Status</th>
-                <th className="px-3 py-3 text-right">Companies</th>
-                <th className="px-3 py-3">Last data</th>
                 <th className="px-3 py-3">Data completeness</th>
                 <th className="px-3 py-3">Notes</th>
                 <th className="px-5 py-3" />
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {rows.map(({ b, lastActivity, state }) => (
+              {pageRows.map(({ b, lastActivity, state }) => (
                 <tr key={b.id} className="align-top transition-colors hover:bg-slate-50/70">
                   <td className="px-5 py-4">
                     <Link href={`/scraper-monitor/${b.id}`} className="font-semibold text-sky-700 hover:underline">
                       {b.campaign_name}
                     </Link>
-                    <p className="mt-0.5 flex items-center gap-2 text-xs text-slate-500">
-                      {b.campaign_id}
-                      {b.origin === "backfill" && <BackfillPill />}
-                    </p>
+                    <p className="mt-0.5 text-xs text-slate-500">{b.campaign_id}</p>
                   </td>
+                  <td className="px-3 py-4 text-right font-medium tabular-nums text-slate-900">{b.companies.toLocaleString()}</td>
                   <td className="px-3 py-4 text-slate-700">{b.country ?? "-"}</td>
                   <td className="px-3 py-4 text-slate-700">{b.state ?? "-"}</td>
                   <td className="px-3 py-4 text-slate-700">{b.city ?? "-"}</td>
                   <td className="px-3 py-4">
                     <StatusPill state={state} />
+                    <p className="mt-1.5 text-xs text-slate-500" title={abs(new Date(lastActivity))}>
+                      Last data {timeAgo(new Date(lastActivity))}
+                    </p>
                     {b.status === "completed" && b.origin === "scraper" && (
-                      <p className="mt-1.5 text-xs text-slate-500" title={abs(b.completed_at)}>
+                      <p className="text-xs text-slate-500" title={abs(b.completed_at)}>
                         {b.completed_by ? "Closed by an admin" : "Closed by scraper"} {timeAgo(b.completed_at)}
                       </p>
                     )}
-                  </td>
-                  <td className="px-3 py-4 text-right font-medium tabular-nums text-slate-900">{b.companies.toLocaleString()}</td>
-                  <td className="whitespace-nowrap px-3 py-4 text-slate-600" title={abs(new Date(lastActivity))}>
-                    {timeAgo(new Date(lastActivity))}
                   </td>
                   <td className="px-3 py-4">
                     <div className="space-y-1">
@@ -242,6 +251,43 @@ export default async function ScraperMonitorPage() {
             </tbody>
           </table>
         </Card>
+
+        <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-slate-600">
+          <div className="flex items-center gap-2">
+            <span>Rows per page</span>
+            {PAGE_SIZES.map((n) => (
+              <Link
+                key={n}
+                href={pageHref(1, n)}
+                className={`rounded-lg px-2.5 py-1 ${n === size ? "bg-slate-900 font-medium text-white" : "border border-slate-300 hover:bg-slate-50"}`}
+              >
+                {n}
+              </Link>
+            ))}
+          </div>
+          <div className="flex items-center gap-2">
+            <span>
+              {rows.length === 0 ? 0 : (page - 1) * size + 1}-{Math.min(page * size, rows.length)} of {rows.length}
+            </span>
+            {page > 1 ? (
+              <Link href={pageHref(page - 1)} className="rounded-lg border border-slate-300 px-3 py-1.5 hover:bg-slate-50">
+                &larr; Previous
+              </Link>
+            ) : (
+              <span className="rounded-lg border border-slate-200 px-3 py-1.5 text-slate-300">&larr; Previous</span>
+            )}
+            <span className="px-1">
+              Page {page} of {totalPages}
+            </span>
+            {page < totalPages ? (
+              <Link href={pageHref(page + 1)} className="rounded-lg border border-slate-300 px-3 py-1.5 hover:bg-slate-50">
+                Next &rarr;
+              </Link>
+            ) : (
+              <span className="rounded-lg border border-slate-200 px-3 py-1.5 text-slate-300">Next &rarr;</span>
+            )}
+          </div>
+        </div>
       </section>
 
       <section className="space-y-3">

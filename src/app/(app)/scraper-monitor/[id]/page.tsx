@@ -6,7 +6,7 @@ import { timeAgo } from "@/lib/time-ago";
 import { AutoRefresh } from "../auto-refresh";
 import { BatchStatusButton } from "../batch-status-button";
 import { abs, deriveState, fetchBatches, fetchLastPushes, pct } from "../data";
-import { BackfillPill, Card, Meter, StatusPill } from "../parts";
+import { Card, Meter, StatusPill } from "../parts";
 import { LEAD_STATUS_BADGE } from "../status";
 
 export const dynamic = "force-dynamic";
@@ -97,7 +97,6 @@ export default async function CampaignPage({
           <div className="flex flex-wrap items-center gap-3">
             <h1 className="text-2xl font-semibold tracking-tight text-slate-900">{b.campaign_name}</h1>
             <StatusPill state={state} />
-            {b.origin === "backfill" && <BackfillPill />}
           </div>
           <p className="text-sm text-slate-500">
             {b.campaign_id}

@@ -22,7 +22,6 @@ export const LEGEND: { tone: Tone; text: string }[] = [
   { tone: STATE_TONE.active, text: "Data arrived in the last 24 hours." },
   { tone: STATE_TONE.stale, text: "Open campaign with nothing received for 24 hours." },
   { tone: STATE_TONE.completed, text: "Closed by the scraper's last-record flag, or by an admin. Permanent." },
-  { tone: BACKFILL_TONE, text: "Existing companies grouped into a campaign after the fact." },
 ];
 
 export const LEAD_STATUS_BADGE: Record<string, string> = {
