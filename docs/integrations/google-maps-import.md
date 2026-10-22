@@ -92,6 +92,44 @@ value falls back to the default rather than erroring the whole record.
 elsewhere in this schema) — send anything descriptive (`"google_maps"`, `"import"`, a
 campaign name, etc.), or omit it and it defaults to `google_maps`.
 
+## Campaign / batch details (optional)
+
+Tag a scraping run so the CRM knows where each company came from. All fields are optional
+**except `campaign_id` whenever any campaign detail is sent** (missing → `400`, or a
+skipped record if it was on a hotel inside `hotels`).
+
+| JSON property (flat) | Same field in a `batch` object | Meaning |
+|---|---|---|
+| `campaign_id` | `campaign_id` | **Unique ID of the campaign.** Max 100 chars. Required with any other campaign field. |
+| `campaign_name` | `campaign_name` | Display name. Defaults to `campaign_id`. |
+| `campaign_country` | `country` | Target country (matched against the CRM country list, else stored as text). |
+| `campaign_state` | `state` | Target state / region. |
+| `campaign_city` | `city` | Target city / area. |
+| `campaign_notes` | `notes` | Free-text notes about the campaign or batch. |
+
+Send them either flat on each record (easiest for a field-mapping scraper — set each as a
+static value in the mapping) or once in a top-level `batch` object:
+
+```json
+{
+  "batch": {
+    "campaign_id": "ny-manhattan-2026-10",
+    "campaign_name": "NY Manhattan Properties",
+    "country": "United States", "state": "NY", "city": "Manhattan",
+    "notes": "Independent + boutique only"
+  },
+  "hotels": [ { "name": "Hotel A" }, { "name": "Hotel B" } ]
+}
+```
+
+- The **first request** with a given `campaign_id` creates the batch (`import_batches` table);
+  every later request with the same ID attaches its companies to it, so one-hotel-per-call
+  posting works. Details are **never overwritten** afterwards — the first request defines them.
+- Campaign country/state/city describe the **target area**, not the hotel. Each hotel keeps its
+  own `address` / `city` / `state` / `country` fields.
+- Each created company gets `companies.import_batch_id`. With no campaign fields, nothing
+  changes from before (`import_batch_id` stays empty).
+
 ## What happens on the server
 
 **No deduplication — every valid record is inserted as a new company.** This was tried
@@ -128,6 +166,9 @@ For each record:
 }
 ```
 
+- When the request carries campaign details, the response also includes
+  `"batch": { "batch_id", "campaign_id", "companies_in_batch" }` (total companies now in that
+  batch), and each created result carries its `batch_id`.
 - Always `200` if the request itself was well-formed and authenticated — per-record
   failures show up in `results[].status: "skipped"` with an `error` message, they don't
   fail the whole batch.
