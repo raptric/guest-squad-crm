@@ -15,6 +15,7 @@ export function UserActions({
   email,
   phone,
   jobTitle,
+  role,
   status,
   isSelf,
 }: {
@@ -23,6 +24,7 @@ export function UserActions({
   email: string;
   phone: string;
   jobTitle: string;
+  role: string;
   status: UserStatus;
   isSelf: boolean;
 }) {
@@ -80,7 +82,7 @@ export function UserActions({
       </div>
       {message && <p className={`text-xs ${message.ok ? "text-green-700" : "text-red-600"}`}>{message.text}</p>}
       {editing && (
-        <EditUserDialog userId={userId} email={email} name={name} phone={phone} jobTitle={jobTitle} onClose={() => setEditing(false)} />
+        <EditUserDialog userId={userId} email={email} name={name} phone={phone} jobTitle={jobTitle} role={role} isSelf={isSelf} onClose={() => setEditing(false)} />
       )}
     </div>
   );

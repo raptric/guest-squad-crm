@@ -16,19 +16,28 @@ const ACTIONS: Action[] = ["resend_invite", "reset_password", "block", "unblock"
 
 const fail = (error: string, status: number) => NextResponse.json({ error }, { status });
 
-// Admin edit of another user's basic profile (name, phone, job title). Email and role are not
-// editable here.
+// Admin edit of a user's basic profile (name, phone, job title) and role. Email is not editable.
+// An admin can't change their own role (so the last admin can't lock themselves out).
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const actor = await getCurrentUser();
   if (!actor || actor.role !== "super_admin") return fail("Forbidden", 403);
 
-  const parsed = parseProfileInput(await request.json());
+  const body = await request.json();
+  const parsed = parseProfileInput(body);
   if ("error" in parsed) return fail(parsed.error, 400);
 
   const { id } = await params;
+  const role = (body as { role?: unknown }).role;
+  if (role !== undefined && role !== "super_admin" && role !== "user") {
+    return fail("role must be 'super_admin' or 'user'", 400);
+  }
+  if (role !== undefined && Number(id) === Number(actor.id) && role !== actor.role) {
+    return fail("You can't change your own role.", 400);
+  }
+
   const { data, error } = await createAdminClient()
     .from("users")
-    .update(parsed.value)
+    .update(role === undefined ? parsed.value : { ...parsed.value, role })
     .eq("id", id)
     .select("id, name, email, role, phone, job_title")
     .maybeSingle();

@@ -79,6 +79,7 @@ export default async function UsersPage() {
                     email={u.email}
                     phone={u.phone ?? ""}
                     jobTitle={u.job_title ?? ""}
+                    role={u.role}
                     status={status} isSelf={Number(u.id) === Number(currentUser?.id)} />
                 </td>
               </tr>

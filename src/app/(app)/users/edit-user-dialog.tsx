@@ -11,6 +11,8 @@ export function EditUserDialog({
   name,
   phone,
   jobTitle,
+  role,
+  isSelf,
   onClose,
 }: {
   userId: number;
@@ -18,10 +20,12 @@ export function EditUserDialog({
   name: string;
   phone: string;
   jobTitle: string;
+  role: string;
+  isSelf: boolean;
   onClose: () => void;
 }) {
   const router = useRouter();
-  const [form, setForm] = useState({ name, phone, job_title: jobTitle });
+  const [form, setForm] = useState({ name, phone, job_title: jobTitle, role });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -60,6 +64,21 @@ export function EditUserDialog({
         <div className="space-y-1">
           <label htmlFor="edit-name" className="text-sm font-medium text-zinc-700">Name</label>
           <input id="edit-name" required className={input} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+        </div>
+
+        <div className="space-y-1">
+          <label htmlFor="edit-role" className="text-sm font-medium text-zinc-700">Role</label>
+          <select
+            id="edit-role"
+            className={input}
+            value={form.role}
+            disabled={isSelf}
+            onChange={(e) => setForm({ ...form, role: e.target.value })}
+          >
+            <option value="user">User</option>
+            <option value="super_admin">Super admin</option>
+          </select>
+          {isSelf && <p className="text-xs text-zinc-500">You can't change your own role.</p>}
         </div>
 
         <div className="space-y-1">
