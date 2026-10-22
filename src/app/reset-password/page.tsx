@@ -40,6 +40,24 @@ export default function ResetPasswordPage() {
 
     const supabase = createClient();
 
+    // Invite links (and resets sent from the admin Users page) carry the session in the URL
+    // hash (#access_token=...&refresh_token=...). The browser client runs in PKCE mode and
+    // refuses to auto-process that format ("Not a valid PKCE flow url"), so establish the
+    // session from the hash ourselves. Links with ?code= (self-service "Forgot password")
+    // are still handled automatically by the client via the listener below.
+    const accessToken = hashParams.get("access_token");
+    const refreshToken = hashParams.get("refresh_token");
+    if (accessToken && refreshToken) {
+      supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken }).then(({ error }) => {
+        if (error) {
+          setInvalidLink(true);
+        } else {
+          window.history.replaceState(null, "", window.location.pathname);
+          setReady(true);
+        }
+      });
+    }
+
     // A valid link establishes a fresh session client-side once Supabase processes the URL.
     const {
       data: { subscription },
