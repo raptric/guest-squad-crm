@@ -11,6 +11,8 @@ import { AddOfferForm } from "./add-offer-form";
 import { OfferList } from "./offer-list";
 import { ChannelBadge, channelLabel } from "./channel-badge";
 import { VerifyBox } from "./verify-box";
+import { InlineField } from "./inline-field";
+import { getPicklistValues } from "@/lib/picklists";
 import { timeAgo } from "@/lib/time-ago";
 
 export const dynamic = "force-dynamic";
@@ -143,6 +145,20 @@ export default async function CompanyDetailPage({
         .order("detected_at", { ascending: false })
     : { data: null };
 
+  // Options for the inline dropdowns. A legacy value no longer in a picklist stays selectable.
+  const [countries, tiers, propertyTypes, propertyClasses, portfolioRoles, { data: userRows }] = await Promise.all([
+    getPicklistValues("country"),
+    getPicklistValues("prospect_tier"),
+    getPicklistValues("property_type"),
+    getPicklistValues("property_class"),
+    getPicklistValues("portfolio_role"),
+    supabase.from("users").select("id, name").order("name"),
+  ]);
+  const options = (list: string[], current?: string | null) =>
+    (current && !list.includes(current) ? [current, ...list] : list).map((v) => ({ value: v, label: v }));
+  const ownerOptions = (userRows ?? []).map((u) => ({ value: String(u.id), label: u.name }));
+  const companyId = Number(id);
+
   return (
     <div className="mx-auto w-full max-w-7xl space-y-4 p-8">
       <div className="flex items-start justify-between">
@@ -161,7 +177,7 @@ export default async function CompanyDetailPage({
         {/* Left: company identity */}
         <aside className="space-y-4">
           <div className="rounded-lg border border-zinc-200 bg-white p-5">
-            <h1 className="text-xl font-semibold leading-tight text-zinc-900">{company.name}</h1>
+            <InlineField companyId={companyId} target="company" field="name" label="Name" value={company.name} variant="title" />
             <div className="mt-2 flex flex-wrap gap-1.5 text-xs text-zinc-600">
               <span className="rounded bg-zinc-100 px-2 py-0.5">{company.company_type}</span>
               <span className="rounded bg-zinc-100 px-2 py-0.5">{company.lifecycle_stage}</span>
@@ -190,16 +206,21 @@ export default async function CompanyDetailPage({
             )}
 
             <dl className="mt-4 space-y-3 border-t border-zinc-100 pt-4 text-sm">
-              <Field label="Website" value={company.website} />
-              <Field label="Phone" value={company.phone} />
-              <Field label="General email" value={company.email} />
-              <Field
-                label="Address"
-                value={[company.address_line_1, company.address_line_2].filter(Boolean).join(", ")}
-              />
-              <Field label="City / State" value={[company.city, company.state].filter(Boolean).join(", ")} />
-              <Field label="Country / Zip" value={[company.country, company.zip].filter(Boolean).join(", ")} />
-              <Field label="Owner" value={owner?.name ?? "Unassigned"} />
+              <InlineField companyId={companyId} target="company" field="website" label="Website" value={company.website} />
+              <InlineField companyId={companyId} target="company" field="phone" label="Phone" type="tel" value={company.phone} />
+              <InlineField companyId={companyId} target="company" field="email" label="General email" type="email" value={company.email} />
+              <InlineField companyId={companyId} target="company" field="address_line_1" label="Address" value={company.address_line_1} />
+              <InlineField companyId={companyId} target="company" field="address_line_2" label="Address line 2" value={company.address_line_2} />
+              <div className="grid grid-cols-2 gap-3">
+                <InlineField companyId={companyId} target="company" field="city" label="City" value={company.city} />
+                <InlineField companyId={companyId} target="company" field="state" label="State" value={company.state} />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <InlineField companyId={companyId} target="company" field="country" label="Country" type="select" options={options(countries, company.country)} value={company.country} />
+                <InlineField companyId={companyId} target="company" field="zip" label="Zip" value={company.zip} />
+              </div>
+              <InlineField companyId={companyId} target="company" field="prospect_tier" label="Tier" type="select" options={options(tiers, company.prospect_tier)} value={company.prospect_tier} />
+              <InlineField companyId={companyId} target="company" field="owner_id" label="Owner" type="select" options={ownerOptions} value={owner ? String(owner.id) : null} emptyText="Unassigned" />
             </dl>
           </div>
         </aside>
@@ -213,10 +234,10 @@ export default async function CompanyDetailPage({
                 <AddPainSignalForm companyId={Number(id)} />
               </div>
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-                <Stat label="Type" value={propertyDetails.property_type} />
-                <Stat label="Class" value={propertyDetails.property_class} />
-                <Stat label="Rooms/Units" value={propertyDetails.rooms_units} />
-                <Stat label="Portfolio Role" value={propertyDetails.portfolio_role} />
+                <InlineField companyId={companyId} target="property" field="property_type" label="Type" variant="stat" type="select" options={options(propertyTypes, propertyDetails.property_type)} value={propertyDetails.property_type} />
+                <InlineField companyId={companyId} target="property" field="property_class" label="Class" variant="stat" type="select" options={options(propertyClasses, propertyDetails.property_class)} value={propertyDetails.property_class} />
+                <InlineField companyId={companyId} target="property" field="rooms_units" label="Rooms/Units" variant="stat" type="number" value={propertyDetails.rooms_units === null ? null : String(propertyDetails.rooms_units)} />
+                <InlineField companyId={companyId} target="property" field="portfolio_role" label="Portfolio Role" variant="stat" type="select" options={options(portfolioRoles, propertyDetails.portfolio_role)} value={propertyDetails.portfolio_role} />
               </div>
 
               {!!painSignals?.length && (
@@ -422,32 +443,6 @@ export default async function CompanyDetailPage({
           </section>
         </aside>
       </div>
-    </div>
-  );
-}
-
-function Field({ label, value, href }: { label: string; value?: string | null; href?: string | null }) {
-  return (
-    <div>
-      <dt className="text-xs text-zinc-500">{label}</dt>
-      <dd className="text-zinc-900">
-        {value && href ? (
-          <a href={href} target="_blank" rel="noreferrer" className="underline">
-            {value}
-          </a>
-        ) : (
-          value || "—"
-        )}
-      </dd>
-    </div>
-  );
-}
-
-function Stat({ label, value }: { label: string; value?: string | number | null }) {
-  return (
-    <div>
-      <div className="text-xs text-zinc-500">{label}</div>
-      <div className="text-sm font-medium text-zinc-900">{value ?? "—"}</div>
     </div>
   );
 }

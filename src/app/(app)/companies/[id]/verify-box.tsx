@@ -102,7 +102,7 @@ export function VerifyBox({
 
           {hasErrors && (
             <div className="space-y-3 rounded-md border border-zinc-200 bg-zinc-50 p-3">
-              <p className="text-xs text-zinc-500">Tick every field that was wrong or missing, then fix it using Edit and the sections on this page.</p>
+              <p className="text-xs text-zinc-500">Tick every field that was wrong or missing, then fix it right on the page: click any value to edit it.</p>
               {VERIFY_FIELD_GROUPS.map((group) => (
                 <div key={group.title}>
                   <p className="mb-1 text-xs font-medium uppercase tracking-wide text-zinc-500">{group.title}</p>
