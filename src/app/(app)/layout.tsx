@@ -13,7 +13,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="flex flex-1">
-      <aside className="flex w-56 flex-col border-r border-zinc-200 bg-white">
+      <aside className="sticky top-0 flex h-screen w-56 shrink-0 flex-col self-start border-r border-zinc-200 bg-white">
         <div className="border-b border-zinc-200 px-4 py-4">
           <Link href="/" className="font-semibold text-zinc-900">
             Guest Squad CRM
@@ -40,7 +40,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         </div>
       </aside>
 
-      <main className="flex flex-1 flex-col overflow-y-auto">{children}</main>
+      <main className="flex min-w-0 flex-1 flex-col">{children}</main>
     </div>
   );
 }

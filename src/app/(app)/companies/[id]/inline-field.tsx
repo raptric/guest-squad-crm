@@ -17,6 +17,7 @@ type Props = {
   options?: InlineOption[];
   href?: string | null;
   emptyText?: string;
+  className?: string;
 };
 
 // Click a value to edit it. Enter or clicking away saves, Esc cancels. Dropdowns save as soon as
@@ -37,6 +38,7 @@ function InlineFieldInner({
   options,
   href,
   emptyText = "—",
+  className = "",
 }: Props) {
   const router = useRouter();
   const [current, setCurrent] = useState(value ?? "");
@@ -158,20 +160,20 @@ function InlineFieldInner({
   );
 
   if (variant === "title") {
-    return <h1 className="text-xl font-semibold leading-tight text-zinc-900">{editing ? editor : display}</h1>;
+    return <h1 className={`text-2xl font-semibold leading-tight tracking-tight text-zinc-900 ${className}`}>{editing ? editor : display}</h1>;
   }
   if (variant === "stat") {
     return (
-      <div>
+      <div className={className}>
         <div className="text-xs text-zinc-500">{label}</div>
         <div className="text-sm font-medium text-zinc-900">{editing ? editor : display}</div>
       </div>
     );
   }
   return (
-    <div>
-      <dt className="text-xs text-zinc-500">{label}</dt>
-      <dd className="text-zinc-900">{editing ? editor : display}</dd>
+    <div className={className}>
+      <dt className="text-xs font-medium text-zinc-500">{label}</dt>
+      <dd className="mt-0.5 text-sm text-zinc-900">{editing ? editor : display}</dd>
     </div>
   );
 }

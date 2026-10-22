@@ -159,137 +159,128 @@ export default async function CompanyDetailPage({
   const ownerOptions = (userRows ?? []).map((u) => ({ value: String(u.id), label: u.name }));
   const companyId = Number(id);
 
+  const LEAD_CHIP: Record<string, string> = {
+    New: "bg-sky-100 text-sky-800",
+    Qualified: "bg-emerald-100 text-emerald-800",
+    "Needs Review": "bg-amber-100 text-amber-800",
+    DisQualified: "bg-zinc-200 text-zinc-600",
+  };
+  const googleRating = ratings?.find((r) => r.channel === "google");
+  const inline = { companyId, target: "company" as const };
+  const prop = { companyId, target: "property" as const };
+
   return (
-    <div className="mx-auto w-full max-w-7xl space-y-4 p-8">
-      <div className="flex items-start justify-between">
-        <Link href="/companies" className="text-sm text-zinc-500 hover:text-zinc-700">
-          Back to Companies
+    <div className="mx-auto w-full max-w-[1600px] space-y-5 p-6 lg:p-8">
+      <div className="flex items-center justify-between">
+        <Link href="/companies" className="text-sm text-zinc-500 hover:text-zinc-800">
+          &larr; Back to Companies
         </Link>
         <Link
           href={`/companies/${id}/edit`}
-          className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+          className="rounded-lg border border-zinc-300 bg-white px-3.5 py-1.5 text-sm font-medium text-zinc-700 shadow-sm hover:bg-zinc-50"
         >
-          Edit
+          Edit all fields
         </Link>
       </div>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[280px_1fr_320px]">
-        {/* Left: company identity */}
-        <aside className="space-y-4">
-          <div className="rounded-lg border border-zinc-200 bg-white p-5">
-            <InlineField companyId={companyId} target="company" field="name" label="Name" value={company.name} variant="title" />
-            <div className="mt-2 flex flex-wrap gap-1.5 text-xs text-zinc-600">
-              <span className="rounded bg-zinc-100 px-2 py-0.5">{company.company_type}</span>
-              <span className="rounded bg-zinc-100 px-2 py-0.5">{company.lifecycle_stage}</span>
-              <span className="rounded bg-zinc-100 px-2 py-0.5">{company.lead_status}</span>
+      {/* Header: identity + the numbers a reviewer wants at a glance */}
+      <section className="rounded-xl border border-zinc-200 bg-white p-6 shadow-sm">
+        <div className="flex flex-wrap items-start justify-between gap-6">
+          <div className="min-w-0 space-y-3">
+            <InlineField {...inline} field="name" label="Name" value={company.name} variant="title" />
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <Chip className="bg-zinc-100 text-zinc-700">{company.company_type}</Chip>
+              <Chip className="bg-zinc-100 text-zinc-700">{company.lifecycle_stage}</Chip>
+              <Chip className={LEAD_CHIP[company.lead_status] ?? "bg-zinc-100 text-zinc-700"}>{company.lead_status}</Chip>
               {company.verification_status && (
-                <span
-                  className={`rounded px-2 py-0.5 ${
-                    company.verification_status === "Ready for Outreach" ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"
-                  }`}
-                >
+                <Chip className={company.verification_status === "Ready for Outreach" ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}>
                   {company.verification_status}
-                </span>
-              )}
-              {company.prospect_tier && (
-                <span className="rounded bg-zinc-100 px-2 py-0.5">{company.prospect_tier}</span>
+                </Chip>
               )}
             </div>
-
             {parentCompany && (
-              <Link
-                href={`/companies/${parentCompany.id}`}
-                className="mt-3 block text-sm text-zinc-600 hover:underline"
-              >
+              <Link href={`/companies/${parentCompany.id}`} className="block text-sm text-zinc-600 hover:underline">
                 Part of <span className="font-medium text-zinc-900">{parentCompany.name}</span>
               </Link>
             )}
-
-            <dl className="mt-4 space-y-3 border-t border-zinc-100 pt-4 text-sm">
-              <InlineField companyId={companyId} target="company" field="website" label="Website" value={company.website} />
-              <InlineField companyId={companyId} target="company" field="phone" label="Phone" type="tel" value={company.phone} />
-              <InlineField companyId={companyId} target="company" field="email" label="General email" type="email" value={company.email} />
-              <InlineField companyId={companyId} target="company" field="address_line_1" label="Address" value={company.address_line_1} />
-              <InlineField companyId={companyId} target="company" field="address_line_2" label="Address line 2" value={company.address_line_2} />
-              <div className="grid grid-cols-2 gap-3">
-                <InlineField companyId={companyId} target="company" field="city" label="City" value={company.city} />
-                <InlineField companyId={companyId} target="company" field="state" label="State" value={company.state} />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <InlineField companyId={companyId} target="company" field="country" label="Country" type="select" options={options(countries, company.country)} value={company.country} />
-                <InlineField companyId={companyId} target="company" field="zip" label="Zip" value={company.zip} />
-              </div>
-              <InlineField companyId={companyId} target="company" field="prospect_tier" label="Tier" type="select" options={options(tiers, company.prospect_tier)} value={company.prospect_tier} />
-              <InlineField companyId={companyId} target="company" field="owner_id" label="Owner" type="select" options={ownerOptions} value={owner ? String(owner.id) : null} emptyText="Unassigned" />
-            </dl>
           </div>
-        </aside>
+          <div className="flex flex-wrap gap-x-8 gap-y-3">
+            <QuickStat label="Tier" value={company.prospect_tier} />
+            {propertyDetails && <QuickStat label="Rooms / units" value={propertyDetails.rooms_units} />}
+            <QuickStat
+              label="Google rating"
+              value={googleRating?.rating ?? null}
+              hint={googleRating?.review_count ? `${googleRating.review_count.toLocaleString()} reviews` : undefined}
+            />
+            <QuickStat label="Contacts" value={contacts.length} />
+          </div>
+        </div>
+      </section>
 
-        {/* Center: property, ratings, portfolio, qualification */}
-        <main className="space-y-4">
-          {propertyDetails && (
-            <section className="space-y-4 rounded-lg border border-zinc-200 bg-white p-5">
-              <div className="flex items-center justify-between">
-                <h2 className="text-sm font-semibold text-zinc-900">Property Profile</h2>
-                <AddPainSignalForm companyId={Number(id)} />
-              </div>
-              <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-                <InlineField companyId={companyId} target="property" field="property_type" label="Type" variant="stat" type="select" options={options(propertyTypes, propertyDetails.property_type)} value={propertyDetails.property_type} />
-                <InlineField companyId={companyId} target="property" field="property_class" label="Class" variant="stat" type="select" options={options(propertyClasses, propertyDetails.property_class)} value={propertyDetails.property_class} />
-                <InlineField companyId={companyId} target="property" field="rooms_units" label="Rooms/Units" variant="stat" type="number" value={propertyDetails.rooms_units === null ? null : String(propertyDetails.rooms_units)} />
-                <InlineField companyId={companyId} target="property" field="portfolio_role" label="Portfolio Role" variant="stat" type="select" options={options(portfolioRoles, propertyDetails.portfolio_role)} value={propertyDetails.portfolio_role} />
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start">
+        {/* Main column */}
+        <main className="min-w-0 space-y-5">
+          <Card title="Details">
+            <div className="grid gap-x-10 gap-y-6 md:grid-cols-2">
+              <div>
+                <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-zinc-400">Contact &amp; location</h3>
+                <dl className="grid grid-cols-2 gap-x-4 gap-y-4">
+                  <InlineField {...inline} field="website" label="Website" value={company.website} className="col-span-2" />
+                  <InlineField {...inline} field="phone" label="Phone" type="tel" value={company.phone} />
+                  <InlineField {...inline} field="email" label="General email" type="email" value={company.email} />
+                  <InlineField {...inline} field="address_line_1" label="Address" value={company.address_line_1} className="col-span-2" />
+                  <InlineField {...inline} field="address_line_2" label="Address line 2" value={company.address_line_2} className="col-span-2" />
+                  <InlineField {...inline} field="city" label="City" value={company.city} />
+                  <InlineField {...inline} field="state" label="State" value={company.state} />
+                  <InlineField {...inline} field="country" label="Country" type="select" options={options(countries, company.country)} value={company.country} />
+                  <InlineField {...inline} field="zip" label="Zip" value={company.zip} />
+                </dl>
               </div>
 
-              {!!painSignals?.length && (
-                <div className="border-t border-zinc-100 pt-3">
-                  <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">
-                    Pain Signals
-                  </h3>
-                  <div className="flex flex-wrap gap-1.5">
-                    {painSignals.map((p) => (
-                      <span key={p.id} className="rounded-full bg-red-50 px-2.5 py-1 text-xs text-red-700">
-                        {p.pain_type}
-                      </span>
-                    ))}
+              <div className="space-y-6">
+                {propertyDetails && (
+                  <div>
+                    <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-zinc-400">Property profile</h3>
+                    <dl className="grid grid-cols-2 gap-x-4 gap-y-4">
+                      <InlineField {...prop} field="property_type" label="Type" type="select" options={options(propertyTypes, propertyDetails.property_type)} value={propertyDetails.property_type} />
+                      <InlineField {...prop} field="property_class" label="Class" type="select" options={options(propertyClasses, propertyDetails.property_class)} value={propertyDetails.property_class} />
+                      <InlineField {...prop} field="rooms_units" label="Rooms / units" type="number" value={propertyDetails.rooms_units === null ? null : String(propertyDetails.rooms_units)} />
+                      <InlineField {...prop} field="portfolio_role" label="Portfolio role" type="select" options={options(portfolioRoles, propertyDetails.portfolio_role)} value={propertyDetails.portfolio_role} />
+                    </dl>
                   </div>
+                )}
+                <div>
+                  <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-zinc-400">Priority &amp; ownership</h3>
+                  <dl className="grid grid-cols-2 gap-x-4 gap-y-4">
+                    <InlineField {...inline} field="prospect_tier" label="Tier" type="select" options={options(tiers, company.prospect_tier)} value={company.prospect_tier} />
+                    <InlineField {...inline} field="owner_id" label="Owner" type="select" options={ownerOptions} value={owner ? String(owner.id) : null} emptyText="Unassigned" />
+                  </dl>
                 </div>
-              )}
-            </section>
-          )}
-
-          <section className="space-y-4 rounded-lg border border-zinc-200 bg-white p-5">
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-zinc-900">Ratings &amp; Reviews</h2>
-              <AddRatingForm companyId={Number(id)} />
-            </div>
-            {!ratings?.length ? (
-              <p className="text-sm text-zinc-500">No ratings logged yet.</p>
-            ) : (
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                {ratings.map((r) => (
-                  <div
-                    key={r.channel}
-                    className="flex items-center gap-2 rounded-lg border border-zinc-100 p-3"
-                  >
-                    <ChannelBadge channel={r.channel} />
-                    <div>
-                      <div className="text-sm font-semibold text-zinc-900">{r.rating ?? "—"}</div>
-                      <div className="text-xs text-zinc-500">
-                        {channelLabel(r.channel)} · {r.review_count ?? 0} reviews
-                      </div>
+                {propertyDetails && (
+                  <div>
+                    <div className="mb-2 flex items-center justify-between">
+                      <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Pain signals</h3>
+                      <AddPainSignalForm companyId={companyId} />
                     </div>
+                    {painSignals?.length ? (
+                      <div className="flex flex-wrap gap-1.5">
+                        {painSignals.map((p) => (
+                          <span key={p.id} className="rounded-full bg-red-50 px-2.5 py-1 text-xs text-red-700">
+                            {p.pain_type}
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-zinc-400">None logged.</p>
+                    )}
                   </div>
-                ))}
+                )}
               </div>
-            )}
-          </section>
+            </div>
+          </Card>
 
           {!isProperty && (
-            <section className="space-y-3 rounded-lg border border-zinc-200 bg-white p-5">
-              <h2 className="text-sm font-semibold text-zinc-900">
-                Portfolio ({children?.length ?? 0} listed
-                {company.portfolio_size ? ` of ${company.portfolio_size} known` : ""})
-              </h2>
+            <Card title={`Portfolio (${children?.length ?? 0} listed${company.portfolio_size ? ` of ${company.portfolio_size} known` : ""})`}>
               {!children?.length ? (
                 <p className="text-sm text-zinc-500">No properties linked to this group yet.</p>
               ) : (
@@ -306,143 +297,191 @@ export default async function CompanyDetailPage({
                   ))}
                 </ul>
               )}
-            </section>
+            </Card>
           )}
 
-          <section className="space-y-3 rounded-lg border border-zinc-200 bg-white p-5">
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-zinc-900">Offer Recommendations</h2>
-              <AddOfferForm companyId={Number(id)} />
-            </div>
-            {!offers?.length ? (
-              <p className="text-sm text-zinc-500">No offer recommendations yet.</p>
+          <Card title={`Contacts (${contacts.length})`} action={<AddContactForm companyId={companyId} />}>
+            {!contacts.length ? (
+              <p className="text-sm text-zinc-500">No contacts yet.</p>
             ) : (
-              <OfferList companyId={Number(id)} offers={offers} />
-            )}
-          </section>
-
-          <section className="space-y-3 rounded-lg border border-zinc-200 bg-white p-5">
-            <h2 className="text-sm font-semibold text-zinc-900">Qualification</h2>
-            <dl className="space-y-3 text-sm">
-              <div>
-                <dt className="text-zinc-500">Qualification Summary</dt>
-                <dd className="text-zinc-900">{company.qualification_summary ?? "—"}</dd>
-              </div>
-              <div>
-                <dt className="text-zinc-500">Why Now (SDR Signal Summary)</dt>
-                <dd className="text-zinc-900">{company.sdr_signal_summary ?? "—"}</dd>
-              </div>
-            </dl>
-          </section>
-        </main>
-
-        {/* Right: contacts, signals, activity */}
-        <aside className="space-y-4">
-          {showVerify && <VerifyBox companyId={Number(id)} status={company.verification_status} last={lastReview} />}
-
-          <section className="space-y-3 rounded-lg border border-zinc-200 bg-white p-5">
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-zinc-900">Contacts ({contacts?.length ?? 0})</h2>
-            </div>
-            <AddContactForm companyId={Number(id)} />
-            {!!contacts?.length && (
-              <ul className="divide-y divide-zinc-100 text-sm">
+              <ul className="grid gap-3 md:grid-cols-2">
                 {contacts.map((c) => (
-                  <li key={c.id} className="space-y-0.5 py-3">
-                    <div className="font-medium text-zinc-900">
-                      <Link href={`/contacts/${c.id}/edit`} className="hover:underline">
+                  <li key={c.id} className="space-y-1 rounded-lg border border-zinc-200 p-3.5">
+                    <div className="flex items-start justify-between gap-2">
+                      <Link href={`/contacts/${c.id}/edit`} className="font-medium text-zinc-900 hover:underline">
                         {c.first_name} {c.last_name ?? ""}
                       </Link>
-                    </div>
-                    <div className="text-xs text-zinc-500">
-                      {[c.job_title, c.contact_role].filter(Boolean).join(" · ") || "—"}
                       {c.is_verified ? (
-                        <span className="ml-2 text-green-700">✓ verified</span>
+                        <Chip className="bg-emerald-100 text-emerald-800">Verified</Chip>
                       ) : (
-                        <span className="ml-2 text-amber-700">
-                          {c.added_by_type === "agent" ? "needs review" : "unverified"}
-                        </span>
+                        <Chip className="bg-amber-100 text-amber-800">{c.added_by_type === "agent" ? "Needs review" : "Unverified"}</Chip>
                       )}
                     </div>
+                    <div className="text-xs text-zinc-500">{[c.job_title, c.contact_role].filter(Boolean).join(" · ") || "—"}</div>
                     {forThisCompany(c.contact_emails).map((e) => (
-                      <div key={e.email} className="text-xs text-zinc-500">
+                      <div key={e.email} className="truncate text-sm text-zinc-700">
                         {e.email}
-                        {!e.is_verified && <span className="ml-1 text-amber-700">(unverified)</span>}
+                        {!e.is_verified && <span className="ml-1 text-xs text-amber-700">(unverified)</span>}
                       </div>
                     ))}
                     {forThisCompany(c.contact_phones).map((p) => (
-                      <div key={p.phone} className="text-xs text-zinc-500">
+                      <div key={p.phone} className="text-sm text-zinc-700">
                         {p.phone}
-                        {!p.is_verified && <span className="ml-1 text-amber-700">(unverified)</span>}
+                        {!p.is_verified && <span className="ml-1 text-xs text-amber-700">(unverified)</span>}
                       </div>
                     ))}
                   </li>
                 ))}
               </ul>
             )}
-          </section>
+          </Card>
 
-          <section className="space-y-3 rounded-lg border border-zinc-200 bg-white p-5">
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-zinc-900">Hiring Signals</h2>
-            </div>
-            <AddHiringSignalForm companyId={Number(id)} />
-            {!!hiringSignals?.length && (
-              <ul className="divide-y divide-zinc-100 text-sm">
-                {hiringSignals.map((h) => (
-                  <li key={h.id} className="py-2">
-                    <div className="flex items-center justify-between">
-                      <span className="font-medium text-zinc-900">{h.role ?? h.job_title}</span>
-                      <span className="text-xs text-zinc-500">{h.strength}</span>
+          <div className="grid gap-5 xl:grid-cols-2">
+            <Card title="Qualification">
+              <dl className="space-y-4 text-sm">
+                <div>
+                  <dt className="text-xs font-medium text-zinc-500">Qualification summary</dt>
+                  <dd className="mt-1 whitespace-pre-wrap leading-relaxed text-zinc-900">{company.qualification_summary ?? "—"}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs font-medium text-zinc-500">Why now (SDR signal summary)</dt>
+                  <dd className="mt-1 whitespace-pre-wrap leading-relaxed text-zinc-900">{company.sdr_signal_summary ?? "—"}</dd>
+                </div>
+              </dl>
+            </Card>
+
+            <Card title="Offer recommendations" action={<AddOfferForm companyId={companyId} />}>
+              {!offers?.length ? (
+                <p className="text-sm text-zinc-500">No offer recommendations yet.</p>
+              ) : (
+                <OfferList companyId={companyId} offers={offers} />
+              )}
+            </Card>
+          </div>
+
+          <div className="grid gap-5 xl:grid-cols-2">
+            <Card title="Ratings & reviews" action={<AddRatingForm companyId={companyId} />}>
+              {!ratings?.length ? (
+                <p className="text-sm text-zinc-500">No ratings logged yet.</p>
+              ) : (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {ratings.map((r) => (
+                    <div key={r.channel} className="flex items-center gap-3 rounded-lg border border-zinc-200 p-3">
+                      <ChannelBadge channel={r.channel} />
+                      <div>
+                        <div className="text-base font-semibold text-zinc-900">{r.rating ?? "—"}</div>
+                        <div className="text-xs text-zinc-500">
+                          {channelLabel(r.channel)} · {r.review_count ?? 0} reviews
+                        </div>
+                      </div>
                     </div>
-                    <div className="text-xs text-zinc-500">{h.job_title}</div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
+                  ))}
+                </div>
+              )}
+            </Card>
 
-          <section className="space-y-3 rounded-lg border border-zinc-200 bg-white p-5">
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-zinc-900">Sales Signals</h2>
-            </div>
-            <AddSignalForm companyId={Number(id)} />
-            {!!signals?.length && (
-              <ul className="divide-y divide-zinc-100 text-sm">
-                {signals.map((s) => (
-                  <li key={s.id} className="flex items-center justify-between py-2">
-                    <span className="font-medium text-zinc-900">{s.signal_type}</span>
-                    <span className="text-xs text-zinc-500">{s.strength}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
+            <Card title="Signals">
+              <div className="space-y-5">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Hiring</h3>
+                    <AddHiringSignalForm companyId={companyId} />
+                  </div>
+                  {hiringSignals?.length ? (
+                    <ul className="divide-y divide-zinc-100 text-sm">
+                      {hiringSignals.map((h) => (
+                        <li key={h.id} className="py-2">
+                          <div className="flex items-center justify-between">
+                            <span className="font-medium text-zinc-900">{h.role ?? h.job_title}</span>
+                            <span className="text-xs text-zinc-500">{h.strength}</span>
+                          </div>
+                          <div className="text-xs text-zinc-500">{h.job_title}</div>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-sm text-zinc-400">None logged.</p>
+                  )}
+                </div>
+                <div className="space-y-2 border-t border-zinc-100 pt-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Sales</h3>
+                    <AddSignalForm companyId={companyId} />
+                  </div>
+                  {signals?.length ? (
+                    <ul className="divide-y divide-zinc-100 text-sm">
+                      {signals.map((sg) => (
+                        <li key={sg.id} className="flex items-center justify-between py-2">
+                          <span className="font-medium text-zinc-900">{sg.signal_type}</span>
+                          <span className="text-xs text-zinc-500">{sg.strength}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-sm text-zinc-400">None logged.</p>
+                  )}
+                </div>
+              </div>
+            </Card>
+          </div>
+        </main>
 
-          <section className="space-y-3 rounded-lg border border-zinc-200 bg-white p-5">
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-zinc-900">Activity</h2>
+        {/* Side column: stays in view while scrolling (stacks around the main column on small screens) */}
+        <aside className="contents lg:sticky lg:top-4 lg:-mx-1 lg:block lg:max-h-[calc(100vh-2rem)] lg:space-y-5 lg:overflow-y-auto lg:px-1 lg:pb-2">
+          {showVerify && (
+            <div className="order-first lg:order-none">
+              <VerifyBox companyId={companyId} status={company.verification_status} last={lastReview} />
             </div>
-            <AddActivityForm companyId={Number(id)} />
-            {!!activities?.length && (
-              <ul className="divide-y divide-zinc-100 text-sm">
-                {activities.map((a) => (
-                  <li key={a.id} className="py-3">
-                    <div className="flex items-center justify-between">
-                      <span className="font-medium text-zinc-900">{a.activity_type}</span>
-                      <span className="text-xs text-zinc-500">
-                        {new Date(a.created_at).toLocaleDateString()}
-                      </span>
-                    </div>
-                    <div className="text-xs text-zinc-500">{a.actor_name}</div>
-                    {a.body && <p className="mt-1 text-zinc-600">{a.body}</p>}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
+          )}
+          <div className="order-last lg:order-none">
+            <Card title="Activity">
+              <div className="space-y-3">
+                <AddActivityForm companyId={companyId} />
+                {!!activities?.length && (
+                  <ul className="divide-y divide-zinc-100 text-sm">
+                    {activities.map((a) => (
+                      <li key={a.id} className="py-3">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-medium text-zinc-900">{a.activity_type}</span>
+                          <span className="text-xs text-zinc-500">{new Date(a.created_at).toLocaleDateString()}</span>
+                        </div>
+                        <div className="text-xs text-zinc-500">{a.actor_name}</div>
+                        {a.body && <p className="mt-1 whitespace-pre-wrap text-zinc-600">{a.body}</p>}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </Card>
+          </div>
         </aside>
       </div>
+    </div>
+  );
+}
+
+function Card({ title, action, children }: { title: string; action?: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <section className="rounded-xl border border-zinc-200 bg-white p-5 shadow-sm">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <h2 className="text-sm font-semibold text-zinc-900">{title}</h2>
+        {action}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function Chip({ className = "", children }: { className?: string; children: React.ReactNode }) {
+  return <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${className}`}>{children}</span>;
+}
+
+function QuickStat({ label, value, hint }: { label: string; value?: string | number | null; hint?: string }) {
+  return (
+    <div>
+      <div className="text-xs font-medium uppercase tracking-wide text-zinc-400">{label}</div>
+      <div className="mt-0.5 text-xl font-semibold text-zinc-900">{value ?? "—"}</div>
+      {hint && <div className="text-xs text-zinc-500">{hint}</div>}
     </div>
   );
 }
