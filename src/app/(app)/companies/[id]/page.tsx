@@ -460,18 +460,28 @@ export default async function CompanyDetailPage({
             </Card>
           </div>
 
-          <Card icon={<ClipboardCheckIcon className="h-5 w-5" />} tone="violet" title="Qualification">
-            <dl className="grid gap-x-10 gap-y-5 text-sm md:grid-cols-2">
-              <div>
-                <dt className="text-xs font-medium text-zinc-500">Qualification summary</dt>
-                <dd className="mt-1 whitespace-pre-wrap leading-relaxed text-zinc-900">{company.qualification_summary ?? "—"}</dd>
-              </div>
-              <div>
-                <dt className="text-xs font-medium text-zinc-500">Why now (SDR signal summary)</dt>
-                <dd className="mt-1 whitespace-pre-wrap leading-relaxed text-zinc-900">{company.sdr_signal_summary ?? "—"}</dd>
-              </div>
-            </dl>
-          </Card>
+          <div className="grid gap-5 lg:grid-cols-2">
+            <Card icon={<ClipboardCheckIcon className="h-5 w-5" />} tone="violet" title="Qualification">
+              <dl className="space-y-5 text-sm">
+                <div>
+                  <dt className="text-xs font-medium text-zinc-500">Qualification summary</dt>
+                  <dd className="mt-1 whitespace-pre-wrap leading-relaxed text-zinc-900">{company.qualification_summary ?? "—"}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs font-medium text-zinc-500">Why now (SDR signal summary)</dt>
+                  <dd className="mt-1 whitespace-pre-wrap leading-relaxed text-zinc-900">{company.sdr_signal_summary ?? "—"}</dd>
+                </div>
+              </dl>
+            </Card>
+
+            <Card icon={<BulbIcon className="h-5 w-5" />} tone="amber" title="Offer recommendations" action={<AddOfferForm companyId={companyId} />}>
+              {!offers?.length ? (
+                <EmptyState icon={<BulbIcon className="h-7 w-7" />} text="No offer recommendations yet." />
+              ) : (
+                <OfferList companyId={companyId} offers={offers} />
+              )}
+            </Card>
+          </div>
         </div>
 
         {/* Side: verify, offers, activity -- sticky on wide screens, stacked around the main block on small ones */}
@@ -482,15 +492,6 @@ export default async function CompanyDetailPage({
             </div>
           )}
           <div className="order-3 min-[1400px]:order-none">
-            <Card icon={<BulbIcon className="h-5 w-5" />} tone="amber" title="Offer recommendations" action={<AddOfferForm companyId={companyId} />}>
-              {!offers?.length ? (
-                <EmptyState icon={<BulbIcon className="h-7 w-7" />} text="No offer recommendations yet." />
-              ) : (
-                <OfferList companyId={companyId} offers={offers} />
-              )}
-            </Card>
-          </div>
-          <div className="order-4 min-[1400px]:order-none">
             <Card icon={<ClockIcon className="h-5 w-5" />} tone="zinc" title="Activity">
               <div className="space-y-3">
                 <AddActivityForm companyId={companyId} />
