@@ -2,6 +2,8 @@ import Link from "next/link";
 import { getCurrentUser } from "@/lib/current-user";
 import { LogoutButton } from "./logout-button";
 import { NavLink } from "./nav-link";
+import { canAssign } from "@/lib/assignment";
+import { fetchUnassignedBadge } from "@/lib/companies/workload";
 import { BuildingIcon, ChartIcon, ClipboardCheckIcon, CogIcon, GridIcon, UserIcon, UsersIcon } from "./icons";
 
 // Every page under here reads live, frequently-mutated data (companies, contacts, signals,
@@ -11,6 +13,8 @@ export const dynamic = "force-dynamic";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await getCurrentUser();
+  // Admins and team leads see how many companies are still waiting to be handed out.
+  const unassigned = canAssign(user) ? await fetchUnassignedBadge(user) : 0;
 
   return (
     <div className="flex flex-1">
@@ -24,7 +28,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <nav className="flex flex-1 flex-col gap-1 p-3">
           <NavLink href="/" icon={<GridIcon />}>Dashboard</NavLink>
           <NavLink href="/review" icon={<ClipboardCheckIcon />}>Review Queue</NavLink>
-          <NavLink href="/companies" icon={<BuildingIcon />}>Companies</NavLink>
+          <NavLink href="/companies" icon={<BuildingIcon />} badge={unassigned}>Companies</NavLink>
           <NavLink href="/contacts" icon={<UserIcon />}>Contacts</NavLink>
           {user?.role === "super_admin" && <NavLink href="/scraper-monitor" icon={<ChartIcon />}>Scraper Monitor</NavLink>}
           {user?.role === "super_admin" && <NavLink href="/users" icon={<UsersIcon />}>Users</NavLink>}

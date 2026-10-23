@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { fetchPicklistValues } from "@/lib/picklists";
+import { getCurrentUser } from "@/lib/current-user";
+import { assignOwner } from "@/lib/assignment";
 
 const fail = (error: string, status = 400) => NextResponse.json({ error }, { status });
 
@@ -39,6 +41,15 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   if ((target !== "company" && target !== "property") || typeof field !== "string") return fail("target and field are required");
   const raw = value === null || value === undefined ? "" : String(value).trim();
 
+  // Owner goes through the assignment rules (and moves the company into the new owner's team).
+  if (target === "company" && field === "owner_id") {
+    if (raw && !/^\d+$/.test(raw)) return fail("Invalid owner");
+    const actor = await getCurrentUser();
+    const result = actor ? await assignOwner(actor, Number(id), raw ? Number(raw) : null) : { error: "Unauthorized" };
+    if ("error" in result) return fail(result.error, 403);
+    return NextResponse.json({ value: raw ? Number(raw) : null });
+  }
+
   const table = target === "company" ? "companies" : "property_details";
   const keyColumn = target === "company" ? "id" : "company_id";
 
@@ -59,15 +70,6 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     if (raw && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(raw)) return fail("That doesn't look like an email address");
     if (raw.length > 255) return fail("email must be 255 characters or fewer");
     parsed = raw.toLowerCase() || null;
-  } else if (target === "company" && field === "owner_id") {
-    if (!raw) {
-      parsed = null;
-    } else {
-      if (!/^\d+$/.test(raw)) return fail("Invalid owner");
-      const { data: owner } = await supabase.from("users").select("id").eq("id", raw).maybeSingle();
-      if (!owner) return fail("Owner not found");
-      parsed = Number(raw);
-    }
   } else if (
     (target === "company" && field in COMPANY_PICKLIST) ||
     (target === "property" && field in PROPERTY_PICKLIST)

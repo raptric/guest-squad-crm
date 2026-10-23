@@ -4,7 +4,7 @@ import { NO_TIER, type Filters, type SortKey } from "./list-filters";
 // Companies page data: one filtered, sorted, paged query plus a count and the option lists for the filters.
 // Every value goes in as a bound parameter; sort columns come from a fixed whitelist.
 
-const FROM = `
+export const FROM = `
   FROM companies c
   LEFT JOIN property_details pd ON pd.company_id = c.id
   LEFT JOIN users o ON o.id = c.owner_id
@@ -30,7 +30,7 @@ const SORT_SQL: Record<SortKey, string> = {
 const HAS_CONTACT = `EXISTS (SELECT 1 FROM contact_companies cc JOIN contacts ct ON ct.id = cc.contact_id AND ct.deleted_at IS NULL WHERE cc.company_id = c.id)`;
 const like = (s: string) => `%${s.replace(/[\\%_]/g, "\\$&")}%`;
 
-function buildWhere(f: Filters) {
+export function buildWhere(f: Filters) {
   const params: unknown[] = [];
   const add = (v: unknown) => {
     params.push(v);

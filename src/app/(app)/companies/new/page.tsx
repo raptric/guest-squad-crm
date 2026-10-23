@@ -1,12 +1,14 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getPicklistValues } from "@/lib/picklists";
+import { getCurrentUser } from "@/lib/current-user";
+import { assignableUsers, canAssign } from "@/lib/assignment";
 import { CompanyForm } from "../company-form";
 
 export default async function NewCompanyPage() {
   const supabase = await createClient();
   const [
-    { data: users },
+    { actor, users },
     lifecycleStages,
     leadStatuses,
     companyTypes,
@@ -16,7 +18,7 @@ export default async function NewCompanyPage() {
     prospectTiers,
     countries,
   ] = await Promise.all([
-    supabase.from("users").select("id, name").order("name"),
+    getCurrentUser().then(async (actor) => ({ actor, users: actor && canAssign(actor) ? await assignableUsers(actor) : [] })),
     getPicklistValues("lifecycle_stage"),
     getPicklistValues("lead_status"),
     getPicklistValues("company_type"),
@@ -37,7 +39,8 @@ export default async function NewCompanyPage() {
       </div>
 
       <CompanyForm
-        users={users ?? []}
+        users={users}
+        canAssign={canAssign(actor)}
         lifecycleStages={lifecycleStages}
         leadStatuses={leadStatuses}
         companyTypes={companyTypes}

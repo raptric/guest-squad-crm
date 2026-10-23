@@ -34,6 +34,8 @@ export type CompanyInitialValues = {
 
 export function CompanyForm({
   users,
+  canAssign,
+  ownerName,
   lifecycleStages,
   leadStatuses,
   companyTypes,
@@ -46,6 +48,9 @@ export function CompanyForm({
   companyId,
 }: {
   users: UserOption[];
+  // Only team leads and admins can choose an owner; everyone else sees a note instead of the dropdown.
+  canAssign: boolean;
+  ownerName?: string | null;
   lifecycleStages: string[];
   leadStatuses: string[];
   companyTypes: string[];
@@ -263,7 +268,18 @@ export function CompanyForm({
 
       <fieldset className="space-y-4 rounded-lg border border-zinc-200 bg-white p-6">
         <legend className="px-1 text-sm font-semibold text-zinc-900">Ownership</legend>
-        <div className="space-y-1">
+        {!canAssign && (
+          <p className="text-sm text-zinc-600">
+            {isEdit ? (
+              <>
+                Owner: <span className="font-medium text-zinc-900">{ownerName ?? "Unassigned"}</span>. Only team leads and admins can reassign companies.
+              </>
+            ) : (
+              "This company will be assigned to you."
+            )}
+          </p>
+        )}
+        {canAssign && <div className="space-y-1">
           <label htmlFor="owner_id" className="text-sm font-medium text-zinc-700">
             Owner
           </label>
@@ -280,7 +296,7 @@ export function CompanyForm({
               </option>
             ))}
           </select>
-        </div>
+        </div>}
       </fieldset>
 
       {error && <p className="text-sm text-red-600">{error}</p>}

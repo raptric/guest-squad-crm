@@ -2,6 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getPicklistValues } from "@/lib/picklists";
+import { getCurrentUser } from "@/lib/current-user";
+import { assignableUsers, canAssign } from "@/lib/assignment";
 import { CompanyForm, type CompanyInitialValues } from "../../company-form";
 
 export default async function EditCompanyPage({
@@ -14,7 +16,7 @@ export default async function EditCompanyPage({
 
   const [
     { data: company },
-    { data: users },
+    { actor, users },
     lifecycleStages,
     leadStatuses,
     companyTypes,
@@ -35,7 +37,7 @@ export default async function EditCompanyPage({
       .eq("id", id)
       .is("deleted_at", null)
       .single(),
-    supabase.from("users").select("id, name").order("name"),
+    getCurrentUser().then(async (actor) => ({ actor, users: actor && canAssign(actor) ? await assignableUsers(actor) : [] })),
     getPicklistValues("lifecycle_stage"),
     getPicklistValues("lead_status"),
     getPicklistValues("company_type"),
@@ -47,6 +49,10 @@ export default async function EditCompanyPage({
   ]);
 
   if (!company) notFound();
+  const { data: ownerRow } = company.owner_id
+    ? await supabase.from("users").select("name").eq("id", company.owner_id).maybeSingle()
+    : { data: null };
+  const ownerName = ownerRow?.name ?? null;
 
   // If this record still has a legacy value no longer in the active picklist, keep it
   // selectable (as its current value) instead of silently switching the dropdown to the
@@ -106,7 +112,9 @@ export default async function EditCompanyPage({
       </div>
 
       <CompanyForm
-        users={users ?? []}
+        users={users}
+        canAssign={canAssign(actor)}
+        ownerName={ownerName}
         lifecycleStages={lifecycleStageOptions}
         leadStatuses={leadStatusOptions}
         companyTypes={companyTypes}

@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { parseCompanyFields, parsePropertyDetailsFields } from "../shared";
+import { parseCompanyFields, parsePropertyDetailsFields, toIntOrNull } from "../shared";
+import { getCurrentUser } from "@/lib/current-user";
+import { assignOwner } from "@/lib/assignment";
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -22,12 +24,23 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
   const { data: existing } = await supabase
     .from("companies")
-    .select("company_type")
+    .select("company_type, owner_id")
     .eq("id", id)
     .single();
 
   if (!existing) {
     return NextResponse.json({ error: "Company not found" }, { status: 404 });
+  }
+
+  // Owner changes follow the assignment rules (only team leads and admins can move companies). Checked before
+  // anything is saved, so a refused change doesn't leave the rest half-updated.
+  if ("owner_id" in body) {
+    const newOwner = toIntOrNull(body.owner_id);
+    if (newOwner !== (existing.owner_id === null ? null : Number(existing.owner_id))) {
+      const actor = await getCurrentUser();
+      const result = actor ? await assignOwner(actor, Number(id), newOwner) : { error: "Unauthorized" };
+      if ("error" in result) return NextResponse.json({ error: result.error }, { status: 403 });
+    }
   }
 
   const { error } = await supabase.from("companies").update(fields).eq("id", id);

@@ -20,7 +20,6 @@ export function parseCompanyFields(body: Record<string, unknown>) {
     prospect_tier,
     qualification_summary,
     sdr_signal_summary,
-    owner_id,
     portfolio_size,
   } = body as Record<string, string | undefined>;
 
@@ -42,7 +41,6 @@ export function parseCompanyFields(body: Record<string, unknown>) {
     prospect_tier: prospect_tier || null,
     qualification_summary: qualification_summary || null,
     sdr_signal_summary: sdr_signal_summary || null,
-    owner_id: toIntOrNull(owner_id),
     // portfolio_size describes the group itself (Management Company, Hotel Group, etc.),
     // not a physical property, so it only applies to non-Property company types.
     portfolio_size: company_type !== "Property" ? toIntOrNull(portfolio_size) : null,

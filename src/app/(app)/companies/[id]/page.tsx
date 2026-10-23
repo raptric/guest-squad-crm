@@ -33,6 +33,8 @@ import {
   UsersIcon,
 } from "../../icons";
 import { getPicklistValues } from "@/lib/picklists";
+import { getCurrentUser } from "@/lib/current-user";
+import { assignableUsers, canAssign } from "@/lib/assignment";
 import { timeAgo } from "@/lib/time-ago";
 
 export const dynamic = "force-dynamic";
@@ -51,7 +53,8 @@ export default async function CompanyDetailPage({
       `id, name, website, company_type, address_line_1, address_line_2, city, state, country, zip, phone, email,
        lifecycle_stage, lead_status, verification_status, prospect_tier, qualification_summary, sdr_signal_summary, portfolio_size,
        parent_company:parent_company_id ( id, name ),
-       owner:owner_id ( id, name )`
+       owner:owner_id ( id, name ),
+       team:team_id ( id, name )`
     )
     .eq("id", id)
     .is("deleted_at", null)
@@ -75,6 +78,7 @@ export default async function CompanyDetailPage({
 
   const parentCompany = company.parent_company as unknown as { id: number; name: string } | null;
   const owner = company.owner as unknown as { id: number; name: string } | null;
+  const team = company.team as unknown as { id: number; name: string } | null;
   const isProperty = company.company_type === "Property";
 
   const [
@@ -166,17 +170,19 @@ export default async function CompanyDetailPage({
     : { data: null };
 
   // Options for the inline dropdowns. A legacy value no longer in a picklist stays selectable.
-  const [countries, tiers, propertyTypes, propertyClasses, portfolioRoles, { data: userRows }] = await Promise.all([
+  const [countries, tiers, propertyTypes, propertyClasses, portfolioRoles, { actor, users: assignUsers }] = await Promise.all([
     getPicklistValues("country"),
     getPicklistValues("prospect_tier"),
     getPicklistValues("property_type"),
     getPicklistValues("property_class"),
     getPicklistValues("portfolio_role"),
-    supabase.from("users").select("id, name").order("name"),
+    getCurrentUser().then(async (actor) => ({ actor, users: actor && canAssign(actor) ? await assignableUsers(actor) : [] })),
   ]);
   const options = (list: string[], current?: string | null) =>
     (current && !list.includes(current) ? [current, ...list] : list).map((v) => ({ value: v, label: v }));
-  const ownerOptions = (userRows ?? []).map((u) => ({ value: String(u.id), label: u.name }));
+  // Only team leads and admins can move a company; everyone else just sees who owns it.
+  const mayAssign = canAssign(actor);
+  const ownerOptions = assignUsers.map((u) => ({ value: String(u.id), label: u.name }));
   const companyId = Number(id);
 
   const LEAD_CHIP: Record<string, string> = {
@@ -262,7 +268,15 @@ export default async function CompanyDetailPage({
               <InlineField {...inline} field="prospect_tier" label="Tier" variant="big" type="select" options={options(tiers, company.prospect_tier)} value={company.prospect_tier} className="text-center" />
             </KpiCell>
             <KpiCell icon={<UsersIcon className="h-5 w-5" />}>
-              <InlineField {...inline} field="owner_id" label="Owner" variant="big" type="select" options={ownerOptions} value={owner ? String(owner.id) : null} emptyText="Unassigned" className="text-center" />
+              {mayAssign ? (
+                <InlineField {...inline} field="owner_id" label="Owner" variant="big" type="select" options={ownerOptions} value={owner ? String(owner.id) : null} emptyText="Unassigned" className="text-center" />
+              ) : (
+                <div>
+                  <div className="text-xs font-medium uppercase tracking-wide text-zinc-400">Owner</div>
+                  <div className={`mt-0.5 text-xl font-semibold ${owner ? "text-zinc-900" : "text-zinc-400"}`}>{owner?.name ?? "Unassigned"}</div>
+                </div>
+              )}
+              {team && <div className="text-xs text-zinc-500">Team: {team.name}</div>}
             </KpiCell>
             <KpiCell icon={<IdCardIcon className="h-5 w-5" />}>
               <div>

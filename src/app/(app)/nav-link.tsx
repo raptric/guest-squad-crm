@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-export function NavLink({ href, icon, children }: { href: string; icon?: React.ReactNode; children: React.ReactNode }) {
+export function NavLink({ href, icon, badge, children }: { href: string; icon?: React.ReactNode; badge?: number; children: React.ReactNode }) {
   const pathname = usePathname();
   const isActive = href === "/" ? pathname === "/" : pathname.startsWith(href);
 
@@ -15,7 +15,15 @@ export function NavLink({ href, icon, children }: { href: string; icon?: React.R
       }`}
     >
       {icon}
-      {children}
+      <span className="flex-1">{children}</span>
+      {badge ? (
+        <span
+          title="Companies waiting to be assigned"
+          className={`rounded-full px-2 py-0.5 text-xs font-semibold ${isActive ? "bg-white/20 text-white" : "bg-amber-100 text-amber-800"}`}
+        >
+          {badge.toLocaleString()}
+        </span>
+      ) : null}
     </Link>
   );
 }
