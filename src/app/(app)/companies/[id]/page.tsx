@@ -227,11 +227,12 @@ export default async function CompanyDetailPage({
           <div>
             <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-zinc-400">Contact &amp; location</h2>
             <dl className="grid grid-cols-2 gap-x-4 gap-y-4 xl:grid-cols-4">
-              <InlineField {...inline} field="website" label="Website" value={company.website} className="col-span-2" />
-              <InlineField {...inline} field="email" label="General email" type="email" value={company.email} className="col-span-2" />
-              <InlineField {...inline} field="phone" label="Phone" type="tel" value={company.phone} />
-              <InlineField {...inline} field="address_line_1" label="Address" value={company.address_line_1} className="col-span-2" />
-              <InlineField {...inline} field="address_line_2" label="Address line 2" value={company.address_line_2} />
+              <InlineField {...inline} field="email" label="General email" type="email" value={company.email} className="xl:col-span-2" />
+              <InlineField {...inline} field="website" label="Website" value={company.website} className="xl:col-span-2" />
+              <InlineField {...inline} field="phone" label="Phone" type="tel" value={company.phone} className="xl:col-span-2" />
+              <div className="xl:col-span-2" aria-hidden />
+              <InlineField {...inline} field="address_line_1" label="Address" value={company.address_line_1} className="xl:col-span-2" />
+              <InlineField {...inline} field="address_line_2" label="Address line 2" value={company.address_line_2} className="xl:col-span-2" />
               <InlineField {...inline} field="city" label="City" value={company.city} />
               <InlineField {...inline} field="state" label="State" value={company.state} />
               <InlineField {...inline} field="country" label="Country" type="select" options={options(countries, company.country)} value={company.country} />
