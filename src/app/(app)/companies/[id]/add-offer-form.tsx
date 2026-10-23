@@ -7,7 +7,7 @@ export async function AddOfferForm({ companyId }: { companyId: number }) {
 
   return (
     <InlineAddForm
-      buttonLabel="Add Recommendation"
+      buttonLabel="Add offer"
       submitLabel="Save Recommendation"
       endpoint={`/api/companies/${companyId}/offers`}
     >

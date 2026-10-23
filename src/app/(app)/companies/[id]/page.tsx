@@ -474,7 +474,7 @@ export default async function CompanyDetailPage({
               </dl>
             </Card>
 
-            <Card icon={<BulbIcon className="h-5 w-5" />} tone="amber" title="Offer recommendations" action={<AddOfferForm companyId={companyId} />}>
+            <Card icon={<BulbIcon className="h-5 w-5" />} tone="amber" title="Offers" action={<AddOfferForm companyId={companyId} />}>
               {!offers?.length ? (
                 <EmptyState icon={<BulbIcon className="h-7 w-7" />} text="No offer recommendations yet." />
               ) : (
