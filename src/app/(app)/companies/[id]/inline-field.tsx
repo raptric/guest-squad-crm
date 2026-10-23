@@ -12,7 +12,7 @@ type Props = {
   label: string;
   value: string | null;
   // "row" = label above value (left card), "stat" = compact (property profile), "title" = page heading
-  variant?: "row" | "stat" | "title";
+  variant?: "row" | "stat" | "big" | "title";
   type?: "text" | "email" | "tel" | "number" | "select";
   options?: InlineOption[];
   href?: string | null;
@@ -161,6 +161,14 @@ function InlineFieldInner({
 
   if (variant === "title") {
     return <h1 className={`text-2xl font-semibold leading-tight tracking-tight text-zinc-900 ${className}`}>{editing ? editor : display}</h1>;
+  }
+  if (variant === "big") {
+    return (
+      <div className={className}>
+        <div className="text-xs font-medium uppercase tracking-wide text-zinc-400">{label}</div>
+        <div className="mt-0.5 text-xl font-semibold text-zinc-900">{editing ? editor : display}</div>
+      </div>
+    );
   }
   if (variant === "stat") {
     return (
