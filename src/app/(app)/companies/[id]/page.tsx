@@ -203,7 +203,18 @@ export default async function CompanyDetailPage({
               </Link>
             )}
           </div>
-          <div className="flex flex-wrap items-start gap-x-10 gap-y-3">
+          {propertyDetails && (
+            <div className="min-w-[320px] pt-1">
+              <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-400">Property profile</h2>
+              <dl className="grid grid-cols-2 gap-x-8 gap-y-3 2xl:grid-cols-4">
+                <InlineField {...prop} field="property_type" label="Type" type="select" options={options(propertyTypes, propertyDetails.property_type)} value={propertyDetails.property_type} />
+                <InlineField {...prop} field="property_class" label="Class" type="select" options={options(propertyClasses, propertyDetails.property_class)} value={propertyDetails.property_class} />
+                <InlineField {...prop} field="rooms_units" label="Rooms / units" type="number" value={propertyDetails.rooms_units === null ? null : String(propertyDetails.rooms_units)} />
+                <InlineField {...prop} field="portfolio_role" label="Portfolio role" type="select" options={options(portfolioRoles, propertyDetails.portfolio_role)} value={propertyDetails.portfolio_role} />
+              </dl>
+            </div>
+          )}
+          <div className="flex flex-wrap items-start gap-x-8 gap-y-3">
             <InlineField {...inline} field="prospect_tier" label="Tier" variant="big" type="select" options={options(tiers, company.prospect_tier)} value={company.prospect_tier} />
             <InlineField {...inline} field="owner_id" label="Owner" variant="big" type="select" options={ownerOptions} value={owner ? String(owner.id) : null} emptyText="Unassigned" />
             <QuickStat label="Contacts" value={contacts.length} />
@@ -211,15 +222,11 @@ export default async function CompanyDetailPage({
         </div>
 
         <div
-          className={`grid gap-x-8 gap-y-6 border-t border-zinc-100 p-6 ${
-            propertyDetails
-              ? "md:grid-cols-2 xl:grid-cols-[minmax(0,2.3fr)_minmax(0,1.2fr)_minmax(0,1.7fr)]"
-              : "lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]"
-          }`}
+          className="grid gap-x-10 gap-y-6 border-t border-zinc-100 p-6 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]"
         >
-          <div className={propertyDetails ? "md:col-span-2 xl:col-span-1" : ""}>
+          <div>
             <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-zinc-400">Contact &amp; location</h2>
-            <dl className="grid grid-cols-2 gap-x-4 gap-y-4 2xl:grid-cols-4">
+            <dl className="grid grid-cols-2 gap-x-4 gap-y-4 xl:grid-cols-4">
               <InlineField {...inline} field="website" label="Website" value={company.website} className="col-span-2" />
               <InlineField {...inline} field="email" label="General email" type="email" value={company.email} className="col-span-2" />
               <InlineField {...inline} field="phone" label="Phone" type="tel" value={company.phone} />
@@ -232,19 +239,8 @@ export default async function CompanyDetailPage({
             </dl>
           </div>
 
-          {propertyDetails && (
-            <div className="xl:border-l xl:border-zinc-100 xl:pl-8">
-              <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-zinc-400">Property profile</h2>
-              <dl className="grid grid-cols-2 gap-x-4 gap-y-4">
-                <InlineField {...prop} field="property_type" label="Type" type="select" options={options(propertyTypes, propertyDetails.property_type)} value={propertyDetails.property_type} />
-                <InlineField {...prop} field="property_class" label="Class" type="select" options={options(propertyClasses, propertyDetails.property_class)} value={propertyDetails.property_class} />
-                <InlineField {...prop} field="rooms_units" label="Rooms / units" type="number" value={propertyDetails.rooms_units === null ? null : String(propertyDetails.rooms_units)} />
-                <InlineField {...prop} field="portfolio_role" label="Portfolio role" type="select" options={options(portfolioRoles, propertyDetails.portfolio_role)} value={propertyDetails.portfolio_role} />
-              </dl>
-            </div>
-          )}
 
-          <div className={propertyDetails ? "xl:border-l xl:border-zinc-100 xl:pl-8" : ""}>
+          <div className="lg:border-l lg:border-zinc-100 lg:pl-10">
             <div className="mb-3 flex items-center justify-between gap-3">
               <h2 className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Ratings &amp; reviews</h2>
               <AddRatingForm companyId={companyId} />
@@ -252,7 +248,7 @@ export default async function CompanyDetailPage({
             {!ratings?.length ? (
               <p className="text-sm text-zinc-400">No ratings logged yet.</p>
             ) : (
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-2 gap-2 2xl:grid-cols-3">
                 {ratings.map((r) => (
                   <div key={r.channel} className="flex items-center gap-2.5 rounded-lg border border-zinc-200 bg-white px-3 py-2">
                     <ChannelBadge channel={r.channel} />
