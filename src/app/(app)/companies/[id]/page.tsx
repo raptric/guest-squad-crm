@@ -291,126 +291,118 @@ export default async function CompanyDetailPage({
             </Card>
           )}
 
-          <Card title={`Contacts (${contacts.length})`} action={<AddContactForm companyId={companyId} />}>
-            {!contacts.length ? (
-              <p className="text-sm text-zinc-500">No contacts yet.</p>
-            ) : (
-              <ul className="grid gap-3 md:grid-cols-2">
-                {contacts.map((c) => (
-                  <li key={c.id} className="space-y-1 rounded-lg border border-zinc-200 p-3.5">
-                    <div className="flex items-start justify-between gap-2">
-                      <Link href={`/contacts/${c.id}/edit`} className="font-medium text-zinc-900 hover:underline">
-                        {c.first_name} {c.last_name ?? ""}
-                      </Link>
-                      {c.is_verified ? (
-                        <Chip className="bg-emerald-100 text-emerald-800">Verified</Chip>
-                      ) : (
-                        <Chip className="bg-amber-100 text-amber-800">{c.added_by_type === "agent" ? "Needs review" : "Unverified"}</Chip>
-                      )}
-                    </div>
-                    <div className="text-xs text-zinc-500">{[c.job_title, c.contact_role].filter(Boolean).join(" · ") || "—"}</div>
-                    {forThisCompany(c.contact_emails).map((e) => (
-                      <div key={e.email} className="truncate text-sm text-zinc-700">
-                        {e.email}
-                        {!e.is_verified && <span className="ml-1 text-xs text-amber-700">(unverified)</span>}
-                      </div>
-                    ))}
-                    {forThisCompany(c.contact_phones).map((p) => (
-                      <div key={p.phone} className="text-sm text-zinc-700">
-                        {p.phone}
-                        {!p.is_verified && <span className="ml-1 text-xs text-amber-700">(unverified)</span>}
-                      </div>
-                    ))}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </Card>
-
           <div className="grid gap-5 xl:grid-cols-2">
-            <Card title="Qualification">
-              <dl className="space-y-4 text-sm">
-                <div>
-                  <dt className="text-xs font-medium text-zinc-500">Qualification summary</dt>
-                  <dd className="mt-1 whitespace-pre-wrap leading-relaxed text-zinc-900">{company.qualification_summary ?? "—"}</dd>
-                </div>
-                <div>
-                  <dt className="text-xs font-medium text-zinc-500">Why now (SDR signal summary)</dt>
-                  <dd className="mt-1 whitespace-pre-wrap leading-relaxed text-zinc-900">{company.sdr_signal_summary ?? "—"}</dd>
-                </div>
-              </dl>
-            </Card>
-
-            <Card title="Offer recommendations" action={<AddOfferForm companyId={companyId} />}>
-              {!offers?.length ? (
-                <p className="text-sm text-zinc-500">No offer recommendations yet.</p>
+            <Card title={`Contacts (${contacts.length})`} action={<AddContactForm companyId={companyId} />}>
+              {!contacts.length ? (
+                <p className="text-sm text-zinc-500">No contacts yet.</p>
               ) : (
-                <OfferList companyId={companyId} offers={offers} />
+                <ul className="grid gap-3 2xl:grid-cols-2">
+                  {contacts.map((c) => (
+                    <li key={c.id} className="space-y-1 rounded-lg border border-zinc-200 p-3.5">
+                      <div className="flex items-start justify-between gap-2">
+                        <Link href={`/contacts/${c.id}/edit`} className="font-medium text-zinc-900 hover:underline">
+                          {c.first_name} {c.last_name ?? ""}
+                        </Link>
+                        {c.is_verified ? (
+                          <Chip className="bg-emerald-100 text-emerald-800">Verified</Chip>
+                        ) : (
+                          <Chip className="bg-amber-100 text-amber-800">{c.added_by_type === "agent" ? "Needs review" : "Unverified"}</Chip>
+                        )}
+                      </div>
+                      <div className="text-xs text-zinc-500">{[c.job_title, c.contact_role].filter(Boolean).join(" · ") || "—"}</div>
+                      {forThisCompany(c.contact_emails).map((e) => (
+                        <div key={e.email} className="truncate text-sm text-zinc-700">
+                          {e.email}
+                          {!e.is_verified && <span className="ml-1 text-xs text-amber-700">(unverified)</span>}
+                        </div>
+                      ))}
+                      {forThisCompany(c.contact_phones).map((p) => (
+                        <div key={p.phone} className="text-sm text-zinc-700">
+                          {p.phone}
+                          {!p.is_verified && <span className="ml-1 text-xs text-amber-700">(unverified)</span>}
+                        </div>
+                      ))}
+                    </li>
+                  ))}
+                </ul>
               )}
             </Card>
-          </div>
 
-          <Card title="Signals">
-            <div className={`grid gap-6 md:divide-x md:divide-zinc-100 ${propertyDetails ? "md:grid-cols-3" : "md:grid-cols-2"}`}>
-              {propertyDetails && (
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Pain</h3>
-                    <AddPainSignalForm companyId={companyId} />
-                  </div>
-                  {painSignals?.length ? (
-                    <div className="flex flex-wrap gap-1.5">
-                      {painSignals.map((p) => (
-                        <span key={p.id} className="rounded-full bg-red-50 px-2.5 py-1 text-xs text-red-700">
-                          {p.pain_type}
-                        </span>
-                      ))}
+            <Card title="Signals">
+              <div className="space-y-5">
+                {propertyDetails && (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Pain</h3>
+                      <AddPainSignalForm companyId={companyId} />
                     </div>
+                    {painSignals?.length ? (
+                      <div className="flex flex-wrap gap-1.5">
+                        {painSignals.map((p) => (
+                          <span key={p.id} className="rounded-full bg-red-50 px-2.5 py-1 text-xs text-red-700">
+                            {p.pain_type}
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-zinc-400">None logged.</p>
+                    )}
+                  </div>
+                )}
+                <div className={`space-y-2 ${propertyDetails ? "border-t border-zinc-100 pt-5" : ""}`}>
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Hiring</h3>
+                    <AddHiringSignalForm companyId={companyId} />
+                  </div>
+                  {hiringSignals?.length ? (
+                    <ul className="divide-y divide-zinc-100 text-sm">
+                      {hiringSignals.map((h) => (
+                        <li key={h.id} className="py-2">
+                          <div className="flex items-center justify-between">
+                            <span className="font-medium text-zinc-900">{h.role ?? h.job_title}</span>
+                            <span className="text-xs text-zinc-500">{h.strength}</span>
+                          </div>
+                          <div className="text-xs text-zinc-500">{h.job_title}</div>
+                        </li>
+                      ))}
+                    </ul>
                   ) : (
                     <p className="text-sm text-zinc-400">None logged.</p>
                   )}
                 </div>
-              )}
-              <div className={`space-y-2 ${propertyDetails ? "md:pl-6" : ""}`}>
-                <div className="flex items-center justify-between">
-                  <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Hiring</h3>
-                  <AddHiringSignalForm companyId={companyId} />
+                <div className="space-y-2 border-t border-zinc-100 pt-5">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Sales</h3>
+                    <AddSignalForm companyId={companyId} />
+                  </div>
+                  {signals?.length ? (
+                    <ul className="divide-y divide-zinc-100 text-sm">
+                      {signals.map((sg) => (
+                        <li key={sg.id} className="flex items-center justify-between py-2">
+                          <span className="font-medium text-zinc-900">{sg.signal_type}</span>
+                          <span className="text-xs text-zinc-500">{sg.strength}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-sm text-zinc-400">None logged.</p>
+                  )}
                 </div>
-                {hiringSignals?.length ? (
-                  <ul className="divide-y divide-zinc-100 text-sm">
-                    {hiringSignals.map((h) => (
-                      <li key={h.id} className="py-2">
-                        <div className="flex items-center justify-between">
-                          <span className="font-medium text-zinc-900">{h.role ?? h.job_title}</span>
-                          <span className="text-xs text-zinc-500">{h.strength}</span>
-                        </div>
-                        <div className="text-xs text-zinc-500">{h.job_title}</div>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="text-sm text-zinc-400">None logged.</p>
-                )}
               </div>
-              <div className="space-y-2 md:pl-6">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Sales</h3>
-                  <AddSignalForm companyId={companyId} />
-                </div>
-                {signals?.length ? (
-                  <ul className="divide-y divide-zinc-100 text-sm">
-                    {signals.map((sg) => (
-                      <li key={sg.id} className="flex items-center justify-between py-2">
-                        <span className="font-medium text-zinc-900">{sg.signal_type}</span>
-                        <span className="text-xs text-zinc-500">{sg.strength}</span>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="text-sm text-zinc-400">None logged.</p>
-                )}
+            </Card>
+          </div>
+
+          <Card title="Qualification">
+            <dl className="grid gap-x-10 gap-y-5 text-sm md:grid-cols-2">
+              <div>
+                <dt className="text-xs font-medium text-zinc-500">Qualification summary</dt>
+                <dd className="mt-1 whitespace-pre-wrap leading-relaxed text-zinc-900">{company.qualification_summary ?? "—"}</dd>
               </div>
-            </div>
+              <div>
+                <dt className="text-xs font-medium text-zinc-500">Why now (SDR signal summary)</dt>
+                <dd className="mt-1 whitespace-pre-wrap leading-relaxed text-zinc-900">{company.sdr_signal_summary ?? "—"}</dd>
+              </div>
+            </dl>
           </Card>
         </main>
 
@@ -421,6 +413,15 @@ export default async function CompanyDetailPage({
               <VerifyBox companyId={companyId} status={company.verification_status} last={lastReview} />
             </div>
           )}
+          <div>
+            <Card title="Offer recommendations" action={<AddOfferForm companyId={companyId} />}>
+              {!offers?.length ? (
+                <p className="text-sm text-zinc-500">No offer recommendations yet.</p>
+              ) : (
+                <OfferList companyId={companyId} offers={offers} />
+              )}
+            </Card>
+          </div>
           <div className="order-last lg:order-none">
             <Card title="Activity">
               <div className="space-y-3">
