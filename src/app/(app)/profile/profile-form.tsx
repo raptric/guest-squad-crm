@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { roleLabel } from "@/lib/roles";
 
 export function ProfileForm({
   name,
@@ -57,7 +58,7 @@ export function ProfileForm({
 
       <div className="space-y-1">
         <label className="text-sm font-medium text-zinc-700">Role</label>
-        <p className="text-sm text-zinc-500">{role}</p>
+        <p className="text-sm text-zinc-500">{roleLabel(role)}</p>
       </div>
 
       <div className="space-y-1">

@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentUser } from "@/lib/current-user";
 import { getAppOrigin } from "@/lib/app-url";
+import { resolveRoleAndTeam } from "@/lib/teams";
 
 async function requireSuperAdmin() {
   const user = await getCurrentUser();
@@ -21,7 +22,7 @@ export async function GET() {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("users")
-    .select("id, name, email, role, created_at")
+    .select("id, name, email, role, team_id, created_at")
     .order("created_at", { ascending: false });
 
   if (error) {
@@ -37,13 +38,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const { name, email, role } = await request.json();
+  const { name, email, role, team_id } = await request.json();
 
   if (!name || !email || !role) {
     return NextResponse.json({ error: "name, email, and role are required" }, { status: 400 });
   }
-  if (!["super_admin", "user"].includes(role)) {
-    return NextResponse.json({ error: "Invalid role" }, { status: 400 });
+  const resolved = await resolveRoleAndTeam({ role, teamId: team_id });
+  if ("error" in resolved) {
+    return NextResponse.json({ error: resolved.error }, { status: 400 });
   }
 
   const supabaseAdmin = createAdminClient();
@@ -59,8 +61,8 @@ export async function POST(request: Request) {
   const supabase = await createClient();
   const { data: created, error: insertError } = await supabase
     .from("users")
-    .insert({ name, email, auth_user_id: invited.user.id, role })
-    .select("id, name, email, role, created_at")
+    .insert({ name, email, auth_user_id: invited.user.id, role: resolved.role, team_id: resolved.team_id })
+    .select("id, name, email, role, team_id, created_at")
     .single();
 
   if (insertError) {

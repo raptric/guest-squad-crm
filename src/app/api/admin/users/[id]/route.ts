@@ -4,6 +4,8 @@ import { createClient } from "@/lib/supabase/server";
 import { getCurrentUser } from "@/lib/current-user";
 import { getAppOrigin } from "@/lib/app-url";
 import { parseProfileInput } from "@/lib/profile-fields";
+import { ROLES } from "@/lib/roles";
+import { resolveRoleAndTeam } from "@/lib/teams";
 
 // "Block" uses Supabase's native auth ban rather than a column of our own: a banned user can't
 // sign in, an already-logged-in session is rejected on its very next request (the app validates
@@ -27,19 +29,33 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   if ("error" in parsed) return fail(parsed.error, 400);
 
   const { id } = await params;
-  const role = (body as { role?: unknown }).role;
-  if (role !== undefined && role !== "super_admin" && role !== "user") {
-    return fail("role must be 'super_admin' or 'user'", 400);
+  const { role, team_id: teamIdRaw } = body as { role?: unknown; team_id?: unknown };
+  if (role !== undefined && !(ROLES as readonly string[]).includes(String(role))) {
+    return fail("role must be 'user', 'team_lead' or 'super_admin'", 400);
   }
   if (role !== undefined && Number(id) === Number(actor.id) && role !== actor.role) {
     return fail("You can't change your own role.", 400);
   }
 
-  const { data, error } = await createAdminClient()
+  const admin = createAdminClient();
+  let roleTeam: { role: string; team_id: number | null } | null = null;
+  if (role !== undefined || teamIdRaw !== undefined) {
+    const { data: current } = await admin.from("users").select("role, team_id").eq("id", id).maybeSingle();
+    if (!current) return fail("User not found", 404);
+    const resolved = await resolveRoleAndTeam({
+      role: role ?? current.role,
+      teamId: teamIdRaw !== undefined ? teamIdRaw : current.team_id,
+      userId: Number(id),
+    });
+    if ("error" in resolved) return fail(resolved.error, 400);
+    roleTeam = resolved;
+  }
+
+  const { data, error } = await admin
     .from("users")
-    .update(role === undefined ? parsed.value : { ...parsed.value, role })
+    .update(roleTeam ? { ...parsed.value, ...roleTeam } : parsed.value)
     .eq("id", id)
-    .select("id, name, email, role, phone, job_title")
+    .select("id, name, email, role, team_id, phone, job_title")
     .maybeSingle();
   if (error) return fail(error.message, 500);
   if (!data) return fail("User not found", 404);

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { ROLE_LABELS } from "@/lib/roles";
 
 const input = "w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-zinc-500 focus:outline-none";
 
@@ -12,6 +13,8 @@ export function EditUserDialog({
   phone,
   jobTitle,
   role,
+  teamId,
+  teams,
   isSelf,
   onClose,
 }: {
@@ -21,11 +24,13 @@ export function EditUserDialog({
   phone: string;
   jobTitle: string;
   role: string;
+  teamId: number | null;
+  teams: { id: number; name: string }[];
   isSelf: boolean;
   onClose: () => void;
 }) {
   const router = useRouter();
-  const [form, setForm] = useState({ name, phone, job_title: jobTitle, role });
+  const [form, setForm] = useState({ name, phone, job_title: jobTitle, role, team_id: teamId ? String(teamId) : "" });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -36,7 +41,13 @@ export function EditUserDialog({
     const res = await fetch(`/api/admin/users/${userId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(form),
+      body: JSON.stringify({
+        name: form.name,
+        phone: form.phone,
+        job_title: form.job_title,
+        role: form.role,
+        team_id: form.role === "super_admin" || !form.team_id ? null : Number(form.team_id),
+      }),
     });
     setSaving(false);
     if (!res.ok) {
@@ -75,11 +86,33 @@ export function EditUserDialog({
             disabled={isSelf}
             onChange={(e) => setForm({ ...form, role: e.target.value })}
           >
-            <option value="user">User</option>
-            <option value="super_admin">Super admin</option>
+            <option value="user">{ROLE_LABELS.user}</option>
+            <option value="team_lead">{ROLE_LABELS.team_lead}</option>
+            <option value="super_admin">{ROLE_LABELS.super_admin}</option>
           </select>
           {isSelf && <p className="text-xs text-zinc-500">You can&apos;t change your own role.</p>}
         </div>
+
+        {form.role !== "super_admin" && (
+          <div className="space-y-1">
+            <label htmlFor="edit-team" className="text-sm font-medium text-zinc-700">
+              Team{form.role === "team_lead" ? " (required for a team lead)" : ""}
+            </label>
+            <select
+              id="edit-team"
+              className={input}
+              value={form.team_id}
+              onChange={(e) => setForm({ ...form, team_id: e.target.value })}
+            >
+              <option value="">{teams.length ? "No team" : "No teams yet"}</option>
+              {teams.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
 
         <div className="space-y-1">
           <label htmlFor="edit-job" className="text-sm font-medium text-zinc-700">Job title</label>
