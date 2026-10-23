@@ -1,222 +1,215 @@
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/server";
-import { getPicklistValues } from "@/lib/picklists";
+import { PAGE_SIZES, parseFilters, type SortKey } from "@/lib/companies/list-filters";
+import { fetchCompanies, fetchFacets } from "@/lib/companies/list-query";
+import { timeAgo } from "@/lib/time-ago";
+import { FiltersBar } from "./filters-bar";
 
 export const dynamic = "force-dynamic";
 
-export default async function CompaniesPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ [key: string]: string | undefined }>;
-}) {
-  const params = await searchParams;
-  const supabase = await createClient();
-  const [lifecycleStages, leadStatuses, companyTypes, countries] = await Promise.all([
-    getPicklistValues("lifecycle_stage"),
-    getPicklistValues("lead_status"),
-    getPicklistValues("company_type"),
-    getPicklistValues("country"),
-  ]);
+const LEAD_CHIP: Record<string, string> = {
+  New: "bg-sky-100 text-sky-800",
+  Qualified: "bg-emerald-100 text-emerald-800",
+  "Needs Review": "bg-amber-100 text-amber-800",
+  DisQualified: "bg-zinc-200 text-zinc-600",
+};
+const TIER_CHIP: Record<string, string> = {
+  "Tier 1": "bg-violet-100 text-violet-800",
+  "Tier 2": "bg-sky-100 text-sky-800",
+  "Tier 3": "bg-zinc-100 text-zinc-700",
+  "Do Not Pursue": "bg-red-100 text-red-700",
+};
 
-  const pageSize = 20;
-  const page = Math.max(1, parseInt(params.page ?? "1", 10) || 1);
-  const from = (page - 1) * pageSize;
-  const to = from + pageSize - 1;
+type RawParams = Record<string, string | string[] | undefined>;
 
-  let query = supabase
-    .from("companies")
-    .select(
-      `id, name, city, country, company_type, lifecycle_stage, lead_status, prospect_tier, source,
-       property_details ( property_type, property_class )`,
-      { count: "exact" }
-    )
-    .is("deleted_at", null)
-    .order("created_at", { ascending: false })
-    .range(from, to);
+// Current URL parameters with a few overrides, for sort / paging links.
+function href(raw: RawParams, overrides: Record<string, string | undefined>) {
+  const p = new URLSearchParams();
+  for (const [k, v] of Object.entries(raw)) {
+    if (k in overrides || v === undefined) continue;
+    (Array.isArray(v) ? v : [v]).forEach((x) => p.append(k, x));
+  }
+  for (const [k, v] of Object.entries(overrides)) if (v !== undefined) p.set(k, v);
+  const qs = p.toString();
+  return qs ? `/companies?${qs}` : "/companies";
+}
 
-  if (params.city) query = query.ilike("city", `%${params.city}%`);
-  if (params.country) query = query.eq("country", params.country);
-  if (params.company_type) query = query.eq("company_type", params.company_type);
-  if (params.lifecycle_stage) query = query.eq("lifecycle_stage", params.lifecycle_stage);
-  if (params.lead_status) query = query.eq("lead_status", params.lead_status);
+export default async function CompaniesPage({ searchParams }: { searchParams: Promise<RawParams> }) {
+  const raw = await searchParams;
+  const f = parseFilters(raw);
 
-  const { data: companies, count } = await query;
-  const totalPages = Math.max(1, Math.ceil((count ?? 0) / pageSize));
+  const [first, facets] = await Promise.all([fetchCompanies(f), fetchFacets()]);
+  const { total } = first;
+  const totalPages = Math.max(1, Math.ceil(total / f.size));
+  const page = Math.min(f.page, totalPages);
+  // A page number beyond the end (stale link, filters narrowed) falls back to the last page.
+  const { rows } = page === f.page ? first : await fetchCompanies({ ...f, page });
+  const from = total === 0 ? 0 : (page - 1) * f.size + 1;
+  const to = Math.min(page * f.size, total);
 
-  const pageHref = (targetPage: number) => {
-    const qs = new URLSearchParams(
-      Object.entries(params).filter(([k, v]) => k !== "page" && v) as [string, string][]
+  // Header cell: click to sort; click again to reverse.
+  const defaultDir: Record<SortKey, "asc" | "desc"> = {
+    created: "desc", name: "asc", city: "asc", tier: "asc", status: "asc", owner: "asc", rating: "desc", rooms: "desc",
+  };
+  const sortTh = (label: string, sort: SortKey, className = "") => {
+    const active = f.sort === sort;
+    const nextDir = active ? (f.dir === "asc" ? "desc" : "asc") : defaultDir[sort];
+    return (
+      <th className={`px-3 py-3 ${className}`}>
+        <Link href={href(raw, { sort, dir: nextDir, page: undefined })} className={`inline-flex items-center gap-1 ${active ? "text-zinc-900" : "hover:text-zinc-800"}`}>
+          {label}
+          <span className="text-[10px]">{active ? (f.dir === "asc" ? "▲" : "▼") : ""}</span>
+        </Link>
+      </th>
     );
-    qs.set("page", String(targetPage));
-    return `/companies?${qs.toString()}`;
   };
 
   return (
-    <div className="w-full space-y-6 p-8">
-      <div className="flex items-center justify-between">
+    <div className="mx-auto w-full max-w-[1800px] space-y-5 p-6 lg:p-8">
+      <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold text-zinc-900">Companies</h1>
-          <p className="text-sm text-zinc-500">Properties, management companies, and portfolios.</p>
+          <h1 className="text-2xl font-semibold tracking-tight text-zinc-900">Companies</h1>
+          <p className="text-sm text-zinc-500">
+            {total.toLocaleString()} {total === 1 ? "company" : "companies"} · search, filter and sort everything in one place.
+          </p>
         </div>
-        <Link
-          href="/companies/new"
-          className="rounded-md bg-zinc-900 px-3 py-2 text-sm font-medium text-white hover:bg-zinc-800"
-        >
+        <Link href="/companies/new" className="rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-zinc-800">
           New Company
         </Link>
       </div>
 
-      <form className="flex flex-wrap items-end gap-3 rounded-lg border border-zinc-200 bg-white p-4">
-        <div className="space-y-1">
-          <label className="text-xs font-medium text-zinc-700">City</label>
-          <input
-            name="city"
-            defaultValue={params.city}
-            className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm"
-          />
-        </div>
-        <div className="space-y-1">
-          <label className="text-xs font-medium text-zinc-700">Country</label>
-          <select
-            name="country"
-            defaultValue={params.country ?? ""}
-            className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm"
-          >
-            <option value="">All</option>
-            {countries.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="space-y-1">
-          <label className="text-xs font-medium text-zinc-700">Type</label>
-          <select
-            name="company_type"
-            defaultValue={params.company_type ?? ""}
-            className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm"
-          >
-            <option value="">All</option>
-            {companyTypes.map((t) => (
-              <option key={t} value={t}>
-                {t}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="space-y-1">
-          <label className="text-xs font-medium text-zinc-700">Lifecycle Stage</label>
-          <select
-            name="lifecycle_stage"
-            defaultValue={params.lifecycle_stage ?? ""}
-            className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm"
-          >
-            <option value="">All</option>
-            {lifecycleStages.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="space-y-1">
-          <label className="text-xs font-medium text-zinc-700">Lead Status</label>
-          <select
-            name="lead_status"
-            defaultValue={params.lead_status ?? ""}
-            className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm"
-          >
-            <option value="">All</option>
-            {leadStatuses.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </select>
-        </div>
-        <button
-          type="submit"
-          className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
-        >
-          Filter
-        </button>
-        <Link href="/companies" className="text-sm text-zinc-500 hover:text-zinc-700">
-          Clear
-        </Link>
-      </form>
+      <FiltersBar facets={facets} />
 
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-zinc-200 text-left text-zinc-500">
-            <th className="py-2 pr-4 font-medium">Name</th>
-            <th className="py-2 pr-4 font-medium">Type</th>
-            <th className="py-2 pr-4 font-medium">Property Type</th>
-            <th className="py-2 pr-4 font-medium">Class</th>
-            <th className="py-2 pr-4 font-medium">City</th>
-            <th className="py-2 pr-4 font-medium">Country</th>
-            <th className="py-2 pr-4 font-medium">Lifecycle</th>
-            <th className="py-2 pr-4 font-medium">Lead Status</th>
-            <th className="py-2 pr-4 font-medium">Tier</th>
-            <th className="py-2 pr-4 font-medium">Source</th>
-          </tr>
-        </thead>
-        <tbody>
-          {companies?.map((c) => {
-            const propertyDetails = c.property_details as unknown as
-              | { property_type: string | null; property_class: string | null }
-              | { property_type: string | null; property_class: string | null }[]
-              | null;
-            const details = Array.isArray(propertyDetails) ? propertyDetails[0] : propertyDetails;
-
-            return (
-              <tr key={c.id} className="border-b border-zinc-100 hover:bg-zinc-50">
-                <td className="py-2 pr-4">
-                  <Link href={`/companies/${c.id}`} className="font-medium text-zinc-900 hover:underline">
+      <div className="overflow-x-auto rounded-2xl border border-zinc-200 bg-white shadow-sm">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-zinc-200 bg-zinc-50 text-left text-xs font-medium uppercase tracking-wide text-zinc-500">
+              {sortTh("Company", "name", "pl-5")}
+              {sortTh("Location", "city")}
+              <th className="px-3 py-3">Type</th>
+              {sortTh("Tier", "tier")}
+              {sortTh("Lead status", "status")}
+              <th className="px-3 py-3">Verification</th>
+              {sortTh("Owner", "owner")}
+              <th className="px-3 py-3">Team</th>
+              {sortTh("Google", "rating")}
+              {sortTh("Rooms", "rooms", "text-right")}
+              <th className="px-3 py-3 text-right">Contacts</th>
+              {sortTh("Added", "created", "pr-5")}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-zinc-100">
+            {rows.map((c) => (
+              <tr key={c.id} className="align-top transition-colors hover:bg-zinc-50/70">
+                <td className="max-w-xs py-3 pl-5 pr-3">
+                  <Link href={`/companies/${c.id}`} className="font-medium text-sky-700 hover:underline">
                     {c.name}
                   </Link>
+                  {c.parent_name && (
+                    <Link href={`/companies/${c.parent_id}`} className="block truncate text-xs text-zinc-500 hover:underline">
+                      Part of {c.parent_name}
+                    </Link>
+                  )}
                 </td>
-                <td className="py-2 pr-4 text-zinc-600">{c.company_type}</td>
-                <td className="py-2 pr-4 text-zinc-600">{details?.property_type ?? "—"}</td>
-                <td className="py-2 pr-4 text-zinc-600">{details?.property_class ?? "—"}</td>
-                <td className="py-2 pr-4 text-zinc-600">{c.city}</td>
-                <td className="py-2 pr-4 text-zinc-600">{c.country}</td>
-                <td className="py-2 pr-4 text-zinc-600">{c.lifecycle_stage}</td>
-                <td className="py-2 pr-4 text-zinc-600">{c.lead_status}</td>
-                <td className="py-2 pr-4 text-zinc-600">{c.prospect_tier}</td>
-                <td className="py-2 pr-4 text-zinc-600">{c.source}</td>
+                <td className="px-3 py-3 text-zinc-700">
+                  {[c.city, c.state].filter(Boolean).join(", ") || "—"}
+                  {c.country && <div className="text-xs text-zinc-500">{c.country}</div>}
+                </td>
+                <td className="px-3 py-3 text-zinc-700">
+                  {c.property_type ?? c.company_type}
+                  {(c.property_class || (c.property_type && c.company_type !== "Property")) && (
+                    <div className="text-xs text-zinc-500">{c.property_class ?? c.company_type}</div>
+                  )}
+                </td>
+                <td className="px-3 py-3">
+                  {c.prospect_tier ? (
+                    <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${TIER_CHIP[c.prospect_tier] ?? "bg-zinc-100 text-zinc-700"}`}>{c.prospect_tier}</span>
+                  ) : (
+                    <span className="text-zinc-400">—</span>
+                  )}
+                </td>
+                <td className="px-3 py-3">
+                  <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${LEAD_CHIP[c.lead_status] ?? "bg-zinc-100 text-zinc-700"}`}>{c.lead_status}</span>
+                </td>
+                <td className="px-3 py-3">
+                  {c.verification_status ? (
+                    <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${c.verification_status === "Ready for Outreach" ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}`}>
+                      {c.verification_status}
+                    </span>
+                  ) : c.lead_status === "Qualified" ? (
+                    <span className="text-xs text-zinc-400">Not verified</span>
+                  ) : (
+                    <span className="text-zinc-300">—</span>
+                  )}
+                </td>
+                <td className="px-3 py-3 text-zinc-700">{c.owner_name ?? <span className="text-zinc-400">Unassigned</span>}</td>
+                <td className="px-3 py-3 text-zinc-700">{c.team_name ?? <span className="text-zinc-400">—</span>}</td>
+                <td className="whitespace-nowrap px-3 py-3 text-zinc-700">
+                  {c.google_rating === null ? (
+                    "—"
+                  ) : (
+                    <>
+                      {Number(c.google_rating).toFixed(1)}
+                      {c.google_reviews !== null && <span className="text-xs text-zinc-400"> ({c.google_reviews.toLocaleString()})</span>}
+                    </>
+                  )}
+                </td>
+                <td className="px-3 py-3 text-right tabular-nums text-zinc-700">{c.rooms_units ?? "—"}</td>
+                <td className="px-3 py-3 text-right tabular-nums text-zinc-700">{c.contacts || "—"}</td>
+                <td className="whitespace-nowrap py-3 pl-3 pr-5 text-zinc-500" title={new Date(c.created_at).toUTCString()}>
+                  {timeAgo(c.created_at)}
+                </td>
               </tr>
-            );
-          })}
-          {companies?.length === 0 && (
-            <tr>
-              <td colSpan={10} className="py-8 text-center text-zinc-500">
-                No companies yet.
-              </td>
-            </tr>
-          )}
-        </tbody>
-      </table>
+            ))}
+            {rows.length === 0 && (
+              <tr>
+                <td colSpan={12} className="py-14 text-center text-zinc-500">
+                  <p className="font-medium text-zinc-700">No companies match these filters.</p>
+                  <Link href="/companies" className="mt-1 inline-block text-sm text-sky-700 hover:underline">
+                    Clear all filters
+                  </Link>
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
 
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between text-sm text-zinc-600">
-          <span>
-            Page {page} of {totalPages} ({count} total)
-          </span>
-          <div className="flex gap-2">
-            {page > 1 && (
-              <Link href={pageHref(page - 1)} className="rounded-md border border-zinc-300 px-3 py-1.5 hover:bg-zinc-50">
-                Previous
-              </Link>
-            )}
-            {page < totalPages && (
-              <Link href={pageHref(page + 1)} className="rounded-md border border-zinc-300 px-3 py-1.5 hover:bg-zinc-50">
-                Next
-              </Link>
-            )}
-          </div>
+      <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-zinc-600">
+        <div className="flex items-center gap-2">
+          <span>Rows per page</span>
+          {PAGE_SIZES.map((n) => (
+            <Link
+              key={n}
+              href={href(raw, { size: String(n), page: undefined })}
+              className={`rounded-lg px-2.5 py-1 ${n === f.size ? "bg-zinc-900 font-medium text-white" : "border border-zinc-300 hover:bg-zinc-50"}`}
+            >
+              {n}
+            </Link>
+          ))}
         </div>
-      )}
+        <div className="flex items-center gap-2">
+          <span>
+            {from.toLocaleString()}-{to.toLocaleString()} of {total.toLocaleString()}
+          </span>
+          {page > 1 ? (
+            <Link href={href(raw, { page: String(page - 1) })} className="rounded-lg border border-zinc-300 px-3 py-1.5 hover:bg-zinc-50">
+              &larr; Previous
+            </Link>
+          ) : (
+            <span className="rounded-lg border border-zinc-200 px-3 py-1.5 text-zinc-300">&larr; Previous</span>
+          )}
+          <span className="px-1">
+            Page {page} of {totalPages}
+          </span>
+          {page < totalPages ? (
+            <Link href={href(raw, { page: String(page + 1) })} className="rounded-lg border border-zinc-300 px-3 py-1.5 hover:bg-zinc-50">
+              Next &rarr;
+            </Link>
+          ) : (
+            <span className="rounded-lg border border-zinc-200 px-3 py-1.5 text-zinc-300">Next &rarr;</span>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
