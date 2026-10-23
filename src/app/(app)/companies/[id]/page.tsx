@@ -12,6 +12,26 @@ import { OfferList } from "./offer-list";
 import { ChannelBadge, channelLabel } from "./channel-badge";
 import { VerifyBox } from "./verify-box";
 import { InlineField } from "./inline-field";
+import {
+  BuildingIcon,
+  BulbIcon,
+  CityIcon,
+  ClipboardCheckIcon,
+  ClockIcon,
+  FlagIcon,
+  GlobeIcon,
+  HashIcon,
+  IdCardIcon,
+  LayersIcon,
+  MailIcon,
+  MapIcon,
+  MapPinIcon,
+  PencilIcon,
+  PhoneIcon,
+  PulseIcon,
+  StarIcon,
+  UsersIcon,
+} from "../../icons";
 import { getPicklistValues } from "@/lib/picklists";
 import { timeAgo } from "@/lib/time-ago";
 
@@ -167,6 +187,7 @@ export default async function CompanyDetailPage({
   };
   const inline = { companyId, target: "company" as const };
   const prop = { companyId, target: "property" as const };
+  const websiteHref = company.website ? (/^https?:\/\//i.test(company.website) ? company.website : `https://${company.website}`) : null;
 
   return (
     <div className="mx-auto w-full max-w-[1600px] space-y-5 p-6 lg:p-8">
@@ -176,37 +197,58 @@ export default async function CompanyDetailPage({
         </Link>
         <Link
           href={`/companies/${id}/edit`}
-          className="rounded-lg border border-zinc-300 bg-white px-3.5 py-1.5 text-sm font-medium text-zinc-700 shadow-sm hover:bg-zinc-50"
+          className="inline-flex items-center gap-2 rounded-xl border border-zinc-300 bg-white px-3.5 py-2 text-sm font-medium text-zinc-700 shadow-sm hover:bg-zinc-50"
         >
+          <PencilIcon className="h-4 w-4" />
           Edit all fields
         </Link>
       </div>
 
-      {/* Header: identity + key facts on top; contact, property profile and guest ratings underneath */}
-      <section className="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm">
-        <div className="flex flex-wrap items-start justify-between gap-x-10 gap-y-4 bg-gradient-to-r from-zinc-50 to-white p-6">
-          <div className="min-w-[260px] flex-1 space-y-3">
-            <InlineField {...inline} field="name" label="Name" value={company.name} variant="title" />
-            <div className="flex flex-wrap items-center gap-2 text-xs">
-              <Chip className="bg-white text-zinc-700 ring-1 ring-zinc-200">{company.company_type}</Chip>
-              <Chip className="bg-white text-zinc-700 ring-1 ring-zinc-200">{company.lifecycle_stage}</Chip>
-              <Chip className={LEAD_CHIP[company.lead_status] ?? "bg-zinc-100 text-zinc-700"}>{company.lead_status}</Chip>
-              {company.verification_status && (
-                <Chip className={company.verification_status === "Ready for Outreach" ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}>
-                  {company.verification_status}
-                </Chip>
+      <div className="grid gap-5 min-[1400px]:grid-cols-[minmax(0,1fr)_360px] min-[1400px]:items-start 2xl:grid-cols-3">
+      {/* Header: identity | property profile | key facts */}
+      <section className="min-w-0 overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm min-[1400px]:col-start-1 min-[1400px]:row-start-1 2xl:col-span-3">
+        <div
+          className={`grid ${
+            propertyDetails
+              ? "lg:grid-cols-2 2xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1.5fr)_minmax(0,1.4fr)]"
+              : "lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1.4fr)]"
+          }`}
+        >
+          <div
+            className={`flex items-center gap-5 border-b border-zinc-100 p-6 ${
+              propertyDetails ? "lg:col-span-2 2xl:col-span-1 2xl:border-b-0 2xl:border-r" : "lg:border-b-0 lg:border-r"
+            }`}
+          >
+            <div className="grid h-20 w-20 shrink-0 place-items-center rounded-2xl bg-sky-50 text-sky-600">
+              <BuildingIcon className="h-10 w-10" />
+            </div>
+            <div className="min-w-0 space-y-2.5">
+              <InlineField {...inline} field="name" label="Name" value={company.name} variant="title" />
+              <div className="flex flex-wrap items-center gap-2 text-xs">
+                <Chip className="bg-zinc-100 text-zinc-700">{company.company_type}</Chip>
+                <Chip className="bg-zinc-100 text-zinc-700">{company.lifecycle_stage}</Chip>
+                <Chip className={LEAD_CHIP[company.lead_status] ?? "bg-zinc-100 text-zinc-700"}>{company.lead_status}</Chip>
+                {company.verification_status && (
+                  <Chip className={company.verification_status === "Ready for Outreach" ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}>
+                    {company.verification_status}
+                  </Chip>
+                )}
+              </div>
+              {parentCompany && (
+                <Link href={`/companies/${parentCompany.id}`} className="block text-sm text-zinc-500 hover:underline">
+                  Part of <span className="font-medium text-zinc-800">{parentCompany.name}</span>
+                </Link>
               )}
             </div>
-            {parentCompany && (
-              <Link href={`/companies/${parentCompany.id}`} className="block text-sm text-zinc-600 hover:underline">
-                Part of <span className="font-medium text-zinc-900">{parentCompany.name}</span>
-              </Link>
-            )}
           </div>
+
           {propertyDetails && (
-            <div className="min-w-[320px] pt-1">
-              <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-400">Property profile</h2>
-              <dl className="grid grid-cols-2 gap-x-8 gap-y-3 2xl:grid-cols-4">
+            <div className="border-b border-zinc-100 p-6 lg:border-b-0 lg:border-r">
+              <h2 className="mb-4 flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-zinc-600">
+                <BuildingIcon className="h-5 w-5 text-sky-600" />
+                Property profile
+              </h2>
+              <dl className="grid grid-cols-2 gap-y-5 [&>*:nth-child(even)]:pl-6 [&>*:nth-child(odd)]:border-r [&>*:nth-child(odd)]:border-zinc-100 [&>*:nth-child(odd)]:pr-6">
                 <InlineField {...prop} field="property_type" label="Type" type="select" options={options(propertyTypes, propertyDetails.property_type)} value={propertyDetails.property_type} />
                 <InlineField {...prop} field="property_class" label="Class" type="select" options={options(propertyClasses, propertyDetails.property_class)} value={propertyDetails.property_class} />
                 <InlineField {...prop} field="rooms_units" label="Rooms / units" type="number" value={propertyDetails.rooms_units === null ? null : String(propertyDetails.rooms_units)} />
@@ -214,65 +256,90 @@ export default async function CompanyDetailPage({
               </dl>
             </div>
           )}
-          <div className="flex flex-wrap items-start gap-x-8 gap-y-3">
-            <InlineField {...inline} field="prospect_tier" label="Tier" variant="big" type="select" options={options(tiers, company.prospect_tier)} value={company.prospect_tier} />
-            <InlineField {...inline} field="owner_id" label="Owner" variant="big" type="select" options={ownerOptions} value={owner ? String(owner.id) : null} emptyText="Unassigned" />
-            <QuickStat label="Contacts" value={contacts.length} />
-          </div>
-        </div>
 
-        <div
-          className="grid gap-x-10 gap-y-6 border-t border-zinc-100 p-6 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]"
-        >
-          <div>
-            <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-zinc-400">Contact &amp; location</h2>
-            <dl className="grid grid-cols-2 gap-x-4 gap-y-4 xl:grid-cols-4">
-              <InlineField {...inline} field="email" label="General email" type="email" value={company.email} className="xl:col-span-2" />
-              <InlineField {...inline} field="website" label="Website" value={company.website} className="xl:col-span-2" />
-              <InlineField {...inline} field="phone" label="Phone" type="tel" value={company.phone} className="xl:col-span-2" />
-              <div className="xl:col-span-2" aria-hidden />
-              <InlineField {...inline} field="address_line_1" label="Address" value={company.address_line_1} className="xl:col-span-2" />
-              <InlineField {...inline} field="address_line_2" label="Address line 2" value={company.address_line_2} className="xl:col-span-2" />
-              <InlineField {...inline} field="city" label="City" value={company.city} />
-              <InlineField {...inline} field="state" label="State" value={company.state} />
-              <InlineField {...inline} field="country" label="Country" type="select" options={options(countries, company.country)} value={company.country} />
-              <InlineField {...inline} field="zip" label="Zip" value={company.zip} />
-            </dl>
-          </div>
-
-
-          <div className="lg:border-l lg:border-zinc-100 lg:pl-10">
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <h2 className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Ratings &amp; reviews</h2>
-              <AddRatingForm companyId={companyId} />
-            </div>
-            {!ratings?.length ? (
-              <p className="text-sm text-zinc-400">No ratings logged yet.</p>
-            ) : (
-              <div className="grid grid-cols-2 gap-2 2xl:grid-cols-3">
-                {ratings.map((r) => (
-                  <div key={r.channel} className="flex items-center gap-2.5 rounded-lg border border-zinc-200 bg-white px-3 py-2">
-                    <ChannelBadge channel={r.channel} />
-                    <div className="min-w-0">
-                      <div className="flex items-baseline gap-1.5">
-                        <span className="text-base font-semibold leading-tight text-zinc-900">{r.rating ?? "—"}</span>
-                        <span className="truncate text-xs text-zinc-500">{(r.review_count ?? 0).toLocaleString()} reviews</span>
-                      </div>
-                      <div className="truncate text-xs text-zinc-600">{channelLabel(r.channel)}</div>
-                    </div>
-                  </div>
-                ))}
+          <div className="grid grid-cols-3 divide-x divide-zinc-100">
+            <KpiCell icon={<LayersIcon className="h-5 w-5" />}>
+              <InlineField {...inline} field="prospect_tier" label="Tier" variant="big" type="select" options={options(tiers, company.prospect_tier)} value={company.prospect_tier} className="text-center" />
+            </KpiCell>
+            <KpiCell icon={<UsersIcon className="h-5 w-5" />}>
+              <InlineField {...inline} field="owner_id" label="Owner" variant="big" type="select" options={ownerOptions} value={owner ? String(owner.id) : null} emptyText="Unassigned" className="text-center" />
+            </KpiCell>
+            <KpiCell icon={<IdCardIcon className="h-5 w-5" />}>
+              <div>
+                <div className="text-xs font-medium uppercase tracking-wide text-zinc-400">Contacts</div>
+                <div className="mt-0.5 text-xl font-semibold text-zinc-900">{contacts.length}</div>
               </div>
-            )}
+            </KpiCell>
           </div>
         </div>
       </section>
 
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start">
-        {/* Main column */}
-        <main className="min-w-0 space-y-5">
+      {/* Contact & location | ratings */}
+      <div className="grid min-w-0 gap-5 min-[1400px]:col-start-1 min-[1400px]:row-start-2 2xl:col-span-3 2xl:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
+        <Card icon={<MapPinIcon className="h-5 w-5" />} title="Contact & location">
+          <div className="divide-y divide-zinc-100">
+            <div className="grid gap-4 pb-5 sm:grid-cols-2 sm:divide-x sm:divide-zinc-100">
+              <FieldCell icon={<MailIcon className="h-5 w-5" />}>
+                <InlineField {...inline} field="email" label="General email" type="email" value={company.email} />
+              </FieldCell>
+              <FieldCell icon={<GlobeIcon className="h-5 w-5" />}>
+                <InlineField {...inline} field="website" label="Website" value={company.website} href={websiteHref} />
+              </FieldCell>
+            </div>
+            <div className="grid gap-4 py-5 sm:grid-cols-2 2xl:grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)_minmax(0,1fr)] 2xl:divide-x 2xl:divide-zinc-100">
+              <FieldCell icon={<PhoneIcon className="h-5 w-5" />}>
+                <InlineField {...inline} field="phone" label="Phone" type="tel" value={company.phone} />
+              </FieldCell>
+              <FieldCell icon={<MapPinIcon className="h-5 w-5" />}>
+                <InlineField {...inline} field="address_line_1" label="Address" value={company.address_line_1} />
+              </FieldCell>
+              <FieldCell>
+                <InlineField {...inline} field="address_line_2" label="Address line 2" value={company.address_line_2} />
+              </FieldCell>
+            </div>
+            <div className="grid grid-cols-2 gap-4 pt-5 sm:grid-cols-4 sm:divide-x sm:divide-zinc-100">
+              <FieldCell icon={<CityIcon className="h-5 w-5" />}>
+                <InlineField {...inline} field="city" label="City" value={company.city} />
+              </FieldCell>
+              <FieldCell icon={<MapIcon className="h-5 w-5" />}>
+                <InlineField {...inline} field="state" label="State" value={company.state} />
+              </FieldCell>
+              <FieldCell icon={<FlagIcon className="h-5 w-5" />}>
+                <InlineField {...inline} field="country" label="Country" type="select" options={options(countries, company.country)} value={company.country} />
+              </FieldCell>
+              <FieldCell icon={<HashIcon className="h-5 w-5" />}>
+                <InlineField {...inline} field="zip" label="Zip" value={company.zip} />
+              </FieldCell>
+            </div>
+          </div>
+        </Card>
+
+        <Card icon={<StarIcon className="h-5 w-5" />} tone="amber" title="Ratings & reviews" action={<AddRatingForm companyId={companyId} />}>
+          {!ratings?.length ? (
+            <EmptyState icon={<StarIcon className="h-7 w-7" />} text="No ratings logged yet." />
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-2">
+              {ratings.map((r) => (
+                <div key={r.channel} className="flex items-center gap-3 rounded-xl border border-zinc-200 p-3.5">
+                  <ChannelBadge channel={r.channel} size="lg" />
+                  <div className="min-w-0">
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-xl font-semibold text-zinc-900">{r.rating ?? "—"}</span>
+                      <span className="truncate text-xs text-zinc-500">{(r.review_count ?? 0).toLocaleString()} reviews</span>
+                    </div>
+                    <div className="truncate text-sm text-zinc-600">{channelLabel(r.channel)}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+      </div>
+
+        {/* Main: contacts | signals, then qualification */}
+        <div className="order-2 min-w-0 space-y-5 min-[1400px]:order-none min-[1400px]:col-start-1 min-[1400px]:row-start-3 2xl:col-span-2">
           {!isProperty && (
-            <Card title={`Portfolio (${children?.length ?? 0} listed${company.portfolio_size ? ` of ${company.portfolio_size} known` : ""})`}>
+            <Card icon={<BuildingIcon className="h-5 w-5" />} title={`Portfolio (${children?.length ?? 0} listed${company.portfolio_size ? ` of ${company.portfolio_size} known` : ""})`}>
               {!children?.length ? (
                 <p className="text-sm text-zinc-500">No properties linked to this group yet.</p>
               ) : (
@@ -292,14 +359,14 @@ export default async function CompanyDetailPage({
             </Card>
           )}
 
-          <div className="grid gap-5 xl:grid-cols-2">
-            <Card title={`Contacts (${contacts.length})`} action={<AddContactForm companyId={companyId} />}>
+          <div className="grid gap-5 lg:grid-cols-2">
+            <Card icon={<UsersIcon className="h-5 w-5" />} title={`Contacts (${contacts.length})`} action={<AddContactForm companyId={companyId} />}>
               {!contacts.length ? (
-                <p className="text-sm text-zinc-500">No contacts yet.</p>
+                <EmptyState icon={<UsersIcon className="h-8 w-8" />} text="No contacts yet." />
               ) : (
-                <ul className="grid gap-3 2xl:grid-cols-2">
+                <ul className="grid gap-3">
                   {contacts.map((c) => (
-                    <li key={c.id} className="space-y-1 rounded-lg border border-zinc-200 p-3.5">
+                    <li key={c.id} className="space-y-1 rounded-xl border border-zinc-200 p-3.5">
                       <div className="flex items-start justify-between gap-2">
                         <Link href={`/contacts/${c.id}/edit`} className="font-medium text-zinc-900 hover:underline">
                           {c.first_name} {c.last_name ?? ""}
@@ -329,11 +396,11 @@ export default async function CompanyDetailPage({
               )}
             </Card>
 
-            <Card title="Signals">
+            <Card icon={<PulseIcon className="h-5 w-5" />} tone="rose" title="Signals">
               <div className="space-y-5">
                 {propertyDetails && (
                   <div className="space-y-3">
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between gap-2">
                       <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Pain</h3>
                       <AddPainSignalForm companyId={companyId} />
                     </div>
@@ -351,7 +418,7 @@ export default async function CompanyDetailPage({
                   </div>
                 )}
                 <div className={`space-y-2 ${propertyDetails ? "border-t border-zinc-100 pt-5" : ""}`}>
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between gap-2">
                     <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Hiring</h3>
                     <AddHiringSignalForm companyId={companyId} />
                   </div>
@@ -372,7 +439,7 @@ export default async function CompanyDetailPage({
                   )}
                 </div>
                 <div className="space-y-2 border-t border-zinc-100 pt-5">
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between gap-2">
                     <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Sales</h3>
                     <AddSignalForm companyId={companyId} />
                   </div>
@@ -393,7 +460,7 @@ export default async function CompanyDetailPage({
             </Card>
           </div>
 
-          <Card title="Qualification">
+          <Card icon={<ClipboardCheckIcon className="h-5 w-5" />} tone="violet" title="Qualification">
             <dl className="grid gap-x-10 gap-y-5 text-sm md:grid-cols-2">
               <div>
                 <dt className="text-xs font-medium text-zinc-500">Qualification summary</dt>
@@ -405,26 +472,26 @@ export default async function CompanyDetailPage({
               </div>
             </dl>
           </Card>
-        </main>
+        </div>
 
-        {/* Side column: stays in view while scrolling (stacks around the main column on small screens) */}
-        <aside className="contents lg:sticky lg:top-4 lg:-mx-1 lg:block lg:max-h-[calc(100vh-2rem)] lg:space-y-5 lg:overflow-y-auto lg:px-1 lg:pb-2">
+        {/* Side: verify, offers, activity -- sticky on wide screens, stacked around the main block on small ones */}
+        <aside className="contents min-[1400px]:sticky min-[1400px]:top-4 min-[1400px]:col-start-2 min-[1400px]:row-span-3 min-[1400px]:row-start-1 min-[1400px]:-mx-1 min-[1400px]:block min-[1400px]:max-h-[calc(100vh-2rem)] min-[1400px]:space-y-5 min-[1400px]:overflow-y-auto min-[1400px]:px-1 min-[1400px]:pb-2 2xl:col-start-3 2xl:row-span-1 2xl:row-start-3">
           {showVerify && (
-            <div className="order-first lg:order-none">
+            <div className="order-1 min-[1400px]:order-none">
               <VerifyBox companyId={companyId} status={company.verification_status} last={lastReview} />
             </div>
           )}
-          <div>
-            <Card title="Offer recommendations" action={<AddOfferForm companyId={companyId} />}>
+          <div className="order-3 min-[1400px]:order-none">
+            <Card icon={<BulbIcon className="h-5 w-5" />} tone="amber" title="Offer recommendations" action={<AddOfferForm companyId={companyId} />}>
               {!offers?.length ? (
-                <p className="text-sm text-zinc-500">No offer recommendations yet.</p>
+                <EmptyState icon={<BulbIcon className="h-7 w-7" />} text="No offer recommendations yet." />
               ) : (
                 <OfferList companyId={companyId} offers={offers} />
               )}
             </Card>
           </div>
-          <div className="order-last lg:order-none">
-            <Card title="Activity">
+          <div className="order-4 min-[1400px]:order-none">
+            <Card icon={<ClockIcon className="h-5 w-5" />} tone="zinc" title="Activity">
               <div className="space-y-3">
                 <AddActivityForm companyId={companyId} />
                 {!!activities?.length && (
@@ -450,11 +517,35 @@ export default async function CompanyDetailPage({
   );
 }
 
-function Card({ title, action, children }: { title: string; action?: React.ReactNode; children: React.ReactNode }) {
+const TONES = {
+  sky: "bg-sky-50 text-sky-600",
+  amber: "bg-amber-50 text-amber-600",
+  rose: "bg-rose-50 text-rose-600",
+  violet: "bg-violet-50 text-violet-600",
+  emerald: "bg-emerald-50 text-emerald-600",
+  zinc: "bg-zinc-100 text-zinc-600",
+};
+
+function Card({
+  icon,
+  tone = "sky",
+  title,
+  action,
+  children,
+}: {
+  icon?: React.ReactNode;
+  tone?: keyof typeof TONES;
+  title: string;
+  action?: React.ReactNode;
+  children: React.ReactNode;
+}) {
   return (
-    <section className="rounded-xl border border-zinc-200 bg-white p-5 shadow-sm">
-      <div className="mb-4 flex items-center justify-between gap-3">
-        <h2 className="text-sm font-semibold text-zinc-900">{title}</h2>
+    <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
+      <div className="mb-5 flex items-center justify-between gap-3">
+        <h2 className="flex items-center gap-3 text-base font-semibold text-zinc-900">
+          {icon && <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl ${TONES[tone]}`}>{icon}</span>}
+          {title}
+        </h2>
         {action}
       </div>
       {children}
@@ -463,15 +554,34 @@ function Card({ title, action, children }: { title: string; action?: React.React
 }
 
 function Chip({ className = "", children }: { className?: string; children: React.ReactNode }) {
-  return <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${className}`}>{children}</span>;
+  return <span className={`rounded-full px-3 py-1 text-xs font-medium ${className}`}>{children}</span>;
 }
 
-function QuickStat({ label, value, hint }: { label: string; value?: string | number | null; hint?: string }) {
+// One of the three key facts at the right of the header: icon, then label + value, centred.
+function KpiCell({ icon, children }: { icon: React.ReactNode; children: React.ReactNode }) {
   return (
-    <div>
-      <div className="text-xs font-medium uppercase tracking-wide text-zinc-400">{label}</div>
-      <div className="mt-0.5 text-xl font-semibold text-zinc-900">{value ?? "—"}</div>
-      {hint && <div className="text-xs text-zinc-500">{hint}</div>}
+    <div className="flex flex-col items-center justify-center gap-2.5 px-3 py-6 text-center">
+      <span className="grid h-11 w-11 place-items-center rounded-xl bg-sky-50 text-sky-600">{icon}</span>
+      {children}
+    </div>
+  );
+}
+
+// A labelled value with its icon, for the contact & location rows.
+function FieldCell({ icon, children }: { icon?: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <div className="flex items-center gap-3 sm:px-5 sm:first:pl-0 sm:last:pr-0">
+      <span className="w-5 shrink-0 text-sky-600/80">{icon}</span>
+      <dl className="min-w-0 flex-1">{children}</dl>
+    </div>
+  );
+}
+
+function EmptyState({ icon, text }: { icon: React.ReactNode; text: string }) {
+  return (
+    <div className="flex flex-col items-center gap-3 py-6 text-center">
+      <span className="grid h-14 w-14 place-items-center rounded-full bg-zinc-100 text-zinc-400">{icon}</span>
+      <p className="text-sm text-zinc-500">{text}</p>
     </div>
   );
 }

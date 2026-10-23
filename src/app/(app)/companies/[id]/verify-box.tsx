@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { CheckIcon, ShieldCheckIcon } from "../../icons";
 import {
   VERIFICATION_INCOMPLETE,
   VERIFICATION_READY,
@@ -63,9 +64,14 @@ export function VerifyBox({
         : "bg-zinc-100 text-zinc-600";
 
   return (
-    <section className="space-y-3 rounded-lg border border-zinc-200 bg-white p-5">
+    <section className="space-y-3 rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
       <div className="flex items-center justify-between gap-2">
-        <h2 className="text-sm font-semibold text-zinc-900">Verify research</h2>
+        <h2 className="flex items-center gap-3 text-base font-semibold text-zinc-900">
+          <span className="grid h-9 w-9 place-items-center rounded-xl bg-emerald-50 text-emerald-600">
+            <ShieldCheckIcon className="h-5 w-5" />
+          </span>
+          Verify research
+        </h2>
         <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${badge}`}>{status ?? "Not verified"}</span>
       </div>
 
@@ -89,8 +95,9 @@ export function VerifyBox({
             <button
               onClick={() => save({ has_errors: false })}
               disabled={saving}
-              className="w-full rounded-md bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-3 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-emerald-700 disabled:opacity-50"
             >
+              <CheckIcon className="h-5 w-5" />
               {saving ? "Saving..." : "Everything is correct"}
             </button>
           )}

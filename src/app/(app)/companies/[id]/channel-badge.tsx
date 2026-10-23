@@ -9,11 +9,13 @@ const CHANNEL_STYLE: Record<string, { label: string; letter: string; className: 
   other: { label: "Other", letter: "?", className: "bg-zinc-400" },
 };
 
-export function ChannelBadge({ channel }: { channel: string }) {
+export function ChannelBadge({ channel, size = "sm" }: { channel: string; size?: "sm" | "lg" }) {
   const style = CHANNEL_STYLE[channel] ?? CHANNEL_STYLE.other;
   return (
     <span
-      className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold text-white ${style.className}`}
+      className={`flex shrink-0 items-center justify-center rounded-full font-semibold text-white ${
+        size === "lg" ? "h-10 w-10 text-base" : "h-6 w-6 text-xs"
+      } ${style.className}`}
       title={style.label}
     >
       {style.letter}

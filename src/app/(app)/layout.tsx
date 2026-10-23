@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getCurrentUser } from "@/lib/current-user";
 import { LogoutButton } from "./logout-button";
 import { NavLink } from "./nav-link";
+import { BuildingIcon, ChartIcon, ClipboardCheckIcon, CogIcon, GridIcon, UserIcon, UsersIcon } from "./icons";
 
 // Every page under here reads live, frequently-mutated data (companies, contacts, signals,
 // users) and gets refreshed via router.refresh() after inline add/edit forms -- without this,
@@ -21,18 +22,21 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         </div>
 
         <nav className="flex flex-1 flex-col gap-1 p-3">
-          <NavLink href="/">Dashboard</NavLink>
-          <NavLink href="/review">Review Queue</NavLink>
-          <NavLink href="/companies">Companies</NavLink>
-          <NavLink href="/contacts">Contacts</NavLink>
-          {user?.role === "super_admin" && <NavLink href="/scraper-monitor">Scraper Monitor</NavLink>}
-          {user?.role === "super_admin" && <NavLink href="/users">Users</NavLink>}
-          {user?.role === "super_admin" && <NavLink href="/settings">Settings</NavLink>}
+          <NavLink href="/" icon={<GridIcon />}>Dashboard</NavLink>
+          <NavLink href="/review" icon={<ClipboardCheckIcon />}>Review Queue</NavLink>
+          <NavLink href="/companies" icon={<BuildingIcon />}>Companies</NavLink>
+          <NavLink href="/contacts" icon={<UserIcon />}>Contacts</NavLink>
+          {user?.role === "super_admin" && <NavLink href="/scraper-monitor" icon={<ChartIcon />}>Scraper Monitor</NavLink>}
+          {user?.role === "super_admin" && <NavLink href="/users" icon={<UsersIcon />}>Users</NavLink>}
+          {user?.role === "super_admin" && <NavLink href="/settings" icon={<CogIcon />}>Settings</NavLink>}
         </nav>
 
         <div className="border-t border-zinc-200 p-3">
-          <Link href="/profile" className="block rounded-md px-3 py-2 text-sm text-zinc-600 hover:bg-zinc-100">
-            {user?.name}
+          <Link href="/profile" className="flex items-center gap-3 rounded-xl px-3 py-2 text-sm text-zinc-700 hover:bg-zinc-100">
+            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-sky-100 text-sm font-semibold text-sky-700">
+              {user?.name?.charAt(0).toUpperCase() ?? "?"}
+            </span>
+            <span className="truncate">{user?.name}</span>
           </Link>
           <div className="px-3 pb-1">
             <LogoutButton />

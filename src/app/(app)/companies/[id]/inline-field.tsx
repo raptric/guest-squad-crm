@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { ExternalLinkIcon } from "../../icons";
 
 export type InlineOption = { value: string; label: string };
 
@@ -133,15 +134,16 @@ function InlineFieldInner({
   const display = (
     <span className="group/edit relative inline-flex max-w-full items-center">
       {shown && href ? (
-        <a href={href} target="_blank" rel="noreferrer" className="truncate underline">
-          {shown}
+        <a href={href} target="_blank" rel="noreferrer" className="inline-flex min-w-0 items-center gap-1.5 text-sky-700 hover:underline">
+          <span className="truncate">{shown}</span>
+          <ExternalLinkIcon className="h-3.5 w-3.5 shrink-0" />
         </a>
       ) : (
         <button
           type="button"
           onClick={() => setEditing(true)}
           title={`Edit ${label.toLowerCase()}`}
-          className={`truncate rounded text-left hover:bg-sky-50 ${shown ? "" : "text-zinc-400"}`}
+          className={`${variant === "title" ? "break-words" : "truncate"} rounded text-left hover:bg-sky-50 ${shown ? "" : "text-zinc-400"}`}
         >
           {shown || emptyText}
         </button>

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { PlusIcon } from "../../icons";
 
 export function InlineAddForm({
   buttonLabel,
@@ -47,8 +48,9 @@ export function InlineAddForm({
     return (
       <button
         onClick={() => setOpen(true)}
-        className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+        className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 shadow-sm hover:bg-zinc-50"
       >
+        <PlusIcon className="h-4 w-4" />
         {buttonLabel}
       </button>
     );
