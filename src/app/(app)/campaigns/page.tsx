@@ -19,7 +19,7 @@ export default async function CampaignsPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-zinc-900">Campaigns</h1>
           <p className="text-sm text-zinc-500">
-            A campaign is a set of steps. When a company that is Ready for Outreach is enrolled, each step becomes a task for its owner.
+            A campaign is a set of steps. When a verified company is enrolled, each step becomes a task for its owner.
           </p>
         </div>
         <Link href="/campaigns/new" className="rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-zinc-800">

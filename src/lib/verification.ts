@@ -4,6 +4,10 @@ export const VERIFICATION_READY = "Ready for Outreach";
 export const VERIFICATION_INCOMPLETE = "Qualified - Incomplete";
 export type VerificationStatus = typeof VERIFICATION_READY | typeof VERIFICATION_INCOMPLETE;
 
+// What people see. The stored value stays "Ready for Outreach" (campaigns and filters read it); "Ready for Outreach" is
+// now a pipeline stage, so the verification field just says Verified.
+export const verificationLabel = (v: string | null | undefined) => (v === VERIFICATION_READY ? "Verified" : v ?? "Not verified");
+
 // The tick list shown when a reviewer reports errors. Keys are stored in company_review_fields.
 export const VERIFY_FIELD_GROUPS: { title: string; fields: { key: string; label: string }[] }[] = [
   {

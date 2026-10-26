@@ -6,6 +6,7 @@ import { CheckIcon, ShieldCheckIcon } from "../../icons";
 import {
   VERIFICATION_INCOMPLETE,
   VERIFICATION_READY,
+  verificationLabel,
   VERIFY_FIELD_GROUPS,
   VERIFY_FIELD_LABELS,
 } from "@/lib/verification";
@@ -72,7 +73,7 @@ export function VerifyBox({
           </span>
           Verify research
         </h2>
-        <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${badge}`}>{status ?? "Not verified"}</span>
+        <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${badge}`}>{status === VERIFICATION_READY && last ? `Verified · ${last.reviewer}` : verificationLabel(status)}</span>
       </div>
 
       {last && (
@@ -164,7 +165,7 @@ export function VerifyBox({
                 disabled={saving}
                 className="w-full rounded-md bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
               >
-                Yes, all fixed &rarr; Ready for Outreach
+                Yes, all fixed &rarr; Verified
               </button>
               <button
                 onClick={() => save({ has_errors: true, fields, fixed_all: false, notes })}

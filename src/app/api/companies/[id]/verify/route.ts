@@ -5,6 +5,7 @@ import { applyVerifiedRule } from "@/lib/pipeline";
 import {
   VERIFICATION_INCOMPLETE,
   VERIFICATION_READY,
+  verificationLabel,
   VERIFY_FIELD_LABELS,
 } from "@/lib/verification";
 
@@ -66,7 +67,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     // Same note shows in the company's activity timeline so the whole team sees it.
     const summary = [
-      `Verification: ${outcome}.`,
+      `Verification: ${verificationLabel(outcome)}.`,
       body.has_errors
         ? `Errors in: ${fields.map((f) => VERIFY_FIELD_LABELS[f]).join(", ")}. ${fixedAll ? "Reviewer fixed all errors." : "Some errors could not be fixed."}`
         : "No errors found.",

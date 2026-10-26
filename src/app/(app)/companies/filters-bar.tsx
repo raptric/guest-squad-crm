@@ -7,6 +7,7 @@ import {
   NO_TIER,
   PORTFOLIO_OPTIONS,
   PRESETS,
+  VERIFICATION_LABELS,
   VERIFICATION_OPTIONS,
 } from "@/lib/companies/list-filters";
 import type { Facets, Option } from "@/lib/companies/list-query";
@@ -77,7 +78,7 @@ export function FiltersBar({ facets, counts }: { facets: Facets; counts: { statu
   addOne("q", `Search: "${sp.get("q")}"`);
   addMulti("status", (v) => v);
   addMulti("stage", (v) => labelOf(facets.stages, v));
-  addMulti("verification", (v) => v);
+  addMulti("verification", (v) => VERIFICATION_LABELS[v] ?? v);
   addMulti("tier", (v) => v);
   addMulti("country", (v) => v);
   addMulti("state", (v) => v);
@@ -229,7 +230,7 @@ export function FiltersBar({ facets, counts }: { facets: Facets; counts: { statu
                 onToggle={(v) => toggle("stage", v)}
               />
             ))}
-            {check("Verification", "verification", plain([...VERIFICATION_OPTIONS]))}
+            {check("Verification", "verification", VERIFICATION_OPTIONS.map((v) => ({ value: v, label: VERIFICATION_LABELS[v] ?? v })))}
             {check("Tier", "tier", plain([...facets.tiers, NO_TIER]))}
           </Column>
 

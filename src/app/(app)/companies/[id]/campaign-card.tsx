@@ -12,7 +12,7 @@ type Recipient = { id: number; label: string };
 
 const addDays = (start: string, n: number) => new Date(Date.parse(`${start}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
 
-// The company's campaign section: enroll (owner of a Ready for Outreach company), then work through the tasks.
+// The company's campaign section: enroll (owner of a verified company), then work through the tasks.
 export function CampaignCard({
   companyId,
   today,

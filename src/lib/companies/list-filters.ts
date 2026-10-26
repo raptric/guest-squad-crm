@@ -12,6 +12,7 @@ export const PORTFOLIO_OPTIONS = [
 ] as const;
 
 export const VERIFICATION_OPTIONS = ["Ready for Outreach", "Qualified - Incomplete", "Not verified"] as const;
+export const VERIFICATION_LABELS: Record<string, string> = { "Ready for Outreach": "Verified", "Qualified - Incomplete": "Incomplete", "Not verified": "Not verified" };
 export const NO_TIER = "No tier";
 
 export const HAS_OPTIONS = [
@@ -112,7 +113,7 @@ export const PRESETS: { label: string; params: Record<string, string | string[]>
   { label: "All", params: {} },
   { label: "Qualified", params: { status: "Qualified" } },
   { label: "Needs verification", params: { status: "Qualified", verification: "Not verified" } },
-  { label: "Ready for outreach", params: { verification: "Ready for Outreach" } },
+  { label: "Verified", params: { verification: "Ready for Outreach" } },
   { label: "In outreach", params: { status: "Prospect" } },
   { label: "Nurture", params: { status: "Nurture" } },
   { label: "Unassigned", params: { owner: "unassigned" } },

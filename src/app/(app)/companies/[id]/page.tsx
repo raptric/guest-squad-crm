@@ -11,6 +11,7 @@ import { AddOfferForm } from "./add-offer-form";
 import { OfferList } from "./offer-list";
 import { ChannelBadge, channelLabel } from "./channel-badge";
 import { VerifyBox } from "./verify-box";
+import { verificationLabel } from "@/lib/verification";
 import { InlineField } from "./inline-field";
 import {
   BuildingIcon,
@@ -190,7 +191,7 @@ export default async function CompanyDetailPage({
   const ownerOptions = assignUsers.map((u) => ({ value: String(u.id), label: u.name }));
   const companyId = Number(id);
 
-  // Campaign: only the owner of a Ready for Outreach company can enroll it; the owner, their team lead and admins can work its tasks.
+  // Campaign: only the owner of a verified company can enroll it; the owner, their team lead and admins can work its tasks.
   const isOwner = !!actor && !!owner && String(owner.id) === String(actor.id);
   const ready = company.verification_status === READY_FOR_OUTREACH;
   const mayEnroll = ready && isOwner;
@@ -210,7 +211,7 @@ export default async function CompanyDetailPage({
     .filter((e) => e.status === "active" && e.campaign_id === lockedCampaignId)
     .map((e) => (e.recipient_type === "company" ? "company" : `contact:${e.contact_id}`));
   const enrollNote = !ready
-    ? "Only companies marked Ready for Outreach can be enrolled in a campaign."
+    ? "Only verified companies can be enrolled in a campaign."
     : !owner
       ? "This company has no owner yet. Assign it to someone first: only its owner can enroll it."
       : `Only ${owner.name}, the owner, can enroll this company.`;
@@ -270,7 +271,7 @@ export default async function CompanyDetailPage({
                 />
                 {company.verification_status && (
                   <Chip className={company.verification_status === "Ready for Outreach" ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}>
-                    {company.verification_status}
+                    <span title={lastReview ? `Reviewed by ${lastReview.reviewer}, ${lastReview.when}` : undefined}>{verificationLabel(company.verification_status)}</span>
                   </Chip>
                 )}
               </div>

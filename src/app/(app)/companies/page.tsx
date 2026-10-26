@@ -7,6 +7,7 @@ import { assignableUsers, canAssign } from "@/lib/assignment";
 import { fetchWorkload } from "@/lib/companies/workload";
 import { FiltersBar } from "./filters-bar";
 import { statusChip } from "@/lib/pipeline-format";
+import { verificationLabel } from "@/lib/verification";
 import { HeaderCheck, RowCheck, SelectionBanner, SelectionProvider } from "./assignment";
 
 export const dynamic = "force-dynamic";
@@ -113,7 +114,7 @@ export default async function CompaniesPage({ searchParams }: { searchParams: Pr
                     <th className="py-2 pr-4">Team / person</th>
                     <th className="py-2 pr-4 text-right">Companies</th>
                     <th className="py-2 pr-4 text-right">Need verification</th>
-                    <th className="py-2 text-right">Ready for outreach</th>
+                    <th className="py-2 text-right">Verified</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-100">
@@ -206,7 +207,7 @@ export default async function CompaniesPage({ searchParams }: { searchParams: Pr
                     <td className="px-3 py-3">
                       {c.verification_status ? (
                         <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${c.verification_status === "Ready for Outreach" ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}`}>
-                          {c.verification_status}
+                          {verificationLabel(c.verification_status)}
                         </span>
                       ) : c.status_name === "Qualified" || c.lead_status === "Qualified" ? (
                         <span className="text-xs text-zinc-400">Not verified</span>

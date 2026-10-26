@@ -8,7 +8,7 @@ export type VerifiedRule = { status_id: string; stage_id: string; is_enabled: bo
 
 const select = "rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-100 disabled:opacity-50";
 
-// The one pipeline rule so far: what happens to a company when its verification ends as Ready for Outreach.
+// The one pipeline rule so far: what happens to a company when it is verified.
 export function RulesSettings({ statuses, rule }: { statuses: PipelineStatus[]; rule: VerifiedRule }) {
   const router = useRouter();
   const [statusId, setStatusId] = useState(rule.status_id);
@@ -46,7 +46,7 @@ export function RulesSettings({ statuses, rule }: { statuses: PipelineStatus[]; 
       <div>
         <h2 className="text-sm font-semibold text-zinc-900">Rules</h2>
         <p className="mt-1 text-xs text-zinc-500">
-          Runs only when a verification ends as <strong>Ready for Outreach</strong> (no errors, or all errors fixed). It never moves a company backwards: if the company is already at or past this
+          Runs only when a company is <strong>verified</strong> (no errors, or all errors fixed). It never moves a company backwards: if the company is already at or past this
           point in the pipeline, nothing changes. &quot;Qualified - Incomplete&quot; moves nothing.
         </p>
       </div>
