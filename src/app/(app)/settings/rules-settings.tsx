@@ -3,13 +3,15 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { PipelineStatus } from "@/lib/pipeline-format";
+import type { EnrollmentRule } from "@/lib/campaign-rule-format";
+import { CampaignRuleBlock } from "./campaign-rule-block";
 
 export type VerifiedRule = { status_id: string; stage_id: string; is_enabled: boolean };
 
 const select = "rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-100 disabled:opacity-50";
 
 // The one pipeline rule so far: what happens to a company when it is verified.
-export function RulesSettings({ statuses, rule }: { statuses: PipelineStatus[]; rule: VerifiedRule }) {
+export function RulesSettings({ statuses, rule, enrollmentRule }: { statuses: PipelineStatus[]; rule: VerifiedRule; enrollmentRule: EnrollmentRule }) {
   const router = useRouter();
   const [statusId, setStatusId] = useState(rule.status_id);
   const [stageId, setStageId] = useState(rule.stage_id);
@@ -110,6 +112,8 @@ export function RulesSettings({ statuses, rule }: { statuses: PipelineStatus[]; 
         {saved && !saving && <span className="text-xs text-emerald-600">Saved</span>}
       </div>
       {error && <p className="text-sm text-red-600">{error}</p>}
+
+      <CampaignRuleBlock statuses={statuses} rule={enrollmentRule} />
     </section>
   );
 }

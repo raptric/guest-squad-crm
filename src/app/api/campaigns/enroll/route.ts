@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/current-user";
 import { query, withTransaction, isUniqueViolation } from "@/lib/db";
-import { READY_FOR_OUTREACH } from "@/lib/campaigns";
+import { checkEnrollable, fetchEnrollmentRule } from "@/lib/campaign-rule";
 
 const fail = (error: string, status = 400) => NextResponse.json({ error }, { status });
 
 // Enroll a company in a campaign. Rules:
 //   * only the company's OWNER can enroll it
-//   * the company must be verified
+//   * the company must meet the enrollment rule set in Settings (verified? allowed status / stage?)
 //   * a company can be in one active campaign at a time (more recipients can join that same campaign)
 //   * the recipient is one of the company's contacts, or the company's general email / phone
 // One task is created per step, due (start date + day - 1): Day 1 is the enrollment day.
@@ -26,13 +26,30 @@ export async function POST(request: Request) {
   if (!Number.isInteger(companyId) || companyId <= 0) return fail("Invalid company");
   if (!Number.isInteger(campaignId) || campaignId <= 0) return fail("Choose a campaign.");
 
-  const [company] = await query<{ id: string; name: string; owner_id: string | null; verification_status: string | null; email: string | null; phone: string | null }>(
-    "SELECT id, name, owner_id, verification_status, email, phone FROM companies WHERE id = $1 AND deleted_at IS NULL",
+  const [company] = await query<{
+    id: string;
+    name: string;
+    owner_id: string | null;
+    verification_status: string | null;
+    email: string | null;
+    phone: string | null;
+    pipeline_status_id: string | null;
+    pipeline_stage_id: string | null;
+    status_name: string | null;
+    stage_name: string | null;
+  }>(
+    `SELECT c.id, c.name, c.owner_id, c.verification_status, c.email, c.phone, c.pipeline_status_id, c.pipeline_stage_id,
+            ps.name AS status_name, pst.name AS stage_name
+       FROM companies c
+       LEFT JOIN pipeline_statuses ps ON ps.id = c.pipeline_status_id
+       LEFT JOIN pipeline_stages pst ON pst.id = c.pipeline_stage_id
+      WHERE c.id = $1 AND c.deleted_at IS NULL`,
     [companyId]
   );
   if (!company) return fail("Company not found", 404);
   if (company.owner_id === null || String(company.owner_id) !== String(actor.id)) return fail("Only the owner of this company can enroll it in a campaign.", 403);
-  if (company.verification_status !== READY_FOR_OUTREACH) return fail("Only verified companies can be enrolled in a campaign.");
+  const eligible = checkEnrollable(await fetchEnrollmentRule(), company);
+  if (!eligible.ok) return fail(eligible.reason);
 
   const [campaign] = await query<{ id: string; name: string; status: string }>("SELECT id, name, status FROM campaigns WHERE id = $1", [campaignId]);
   if (!campaign) return fail("Campaign not found", 404);

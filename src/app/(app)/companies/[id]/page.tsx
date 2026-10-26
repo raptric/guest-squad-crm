@@ -12,6 +12,7 @@ import { OfferList } from "./offer-list";
 import { ChannelBadge, channelLabel } from "./channel-badge";
 import { VerifyBox } from "./verify-box";
 import { verificationLabel } from "@/lib/verification";
+import { checkEnrollable, fetchEnrollmentRule } from "@/lib/campaign-rule";
 import { InlineField } from "./inline-field";
 import {
   BuildingIcon,
@@ -36,7 +37,7 @@ import {
 import { getPicklistValues } from "@/lib/picklists";
 import { getCurrentUser } from "@/lib/current-user";
 import { assignableUsers, canAssign } from "@/lib/assignment";
-import { fetchActiveCampaigns, fetchCompanyEnrollments, READY_FOR_OUTREACH } from "@/lib/campaigns";
+import { fetchActiveCampaigns, fetchCompanyEnrollments } from "@/lib/campaigns";
 import { todayUtc } from "@/lib/campaigns-format";
 import { CampaignCard } from "./campaign-card";
 import { PipelineEditor } from "./pipeline-editor";
@@ -191,9 +192,19 @@ export default async function CompanyDetailPage({
   const ownerOptions = assignUsers.map((u) => ({ value: String(u.id), label: u.name }));
   const companyId = Number(id);
 
-  // Campaign: only the owner of a verified company can enroll it; the owner, their team lead and admins can work its tasks.
+  // Campaign: only the owner of an eligible company can enroll it; the owner, their team lead and admins can work its tasks.
   const isOwner = !!actor && !!owner && String(owner.id) === String(actor.id);
-  const ready = company.verification_status === READY_FOR_OUTREACH;
+  const pipelineStatus = pipeline.find((s) => s.id === String(company.pipeline_status_id));
+  const pipelineStage = pipelineStatus?.stages.find((g) => g.id === String(company.pipeline_stage_id));
+  // Who may be enrolled is a Settings rule (verified? which status / stage combinations?).
+  const eligibility = checkEnrollable(await fetchEnrollmentRule(), {
+    verification_status: company.verification_status,
+    pipeline_status_id: company.pipeline_status_id,
+    pipeline_stage_id: company.pipeline_stage_id,
+    status_name: pipelineStatus?.name ?? null,
+    stage_name: pipelineStage?.name ?? null,
+  });
+  const ready = eligibility.ok;
   const mayEnroll = ready && isOwner;
   const [enrollments, campaigns] = await Promise.all([fetchCompanyEnrollments(companyId), mayEnroll ? fetchActiveCampaigns() : Promise.resolve([])]);
   const canActOnTasks =
@@ -203,15 +214,13 @@ export default async function CompanyDetailPage({
       (actor.role === "team_lead" && !!actor.team_id && (String(team?.id) === String(actor.team_id) || String(owner?.team_id) === String(actor.team_id))));
   const showCampaign = ready || enrollments.length > 0;
   // Status / stage (the pipeline). Who may change it is the same set of people who can work the company's tasks.
-  const pipelineStatus = pipeline.find((s) => s.id === String(company.pipeline_status_id));
-  const pipelineStage = pipelineStatus?.stages.find((g) => g.id === String(company.pipeline_stage_id));
   const showVerify = company.lead_status === "Qualified" || pipelineStatus?.name === "Qualified" || company.verification_status !== null;
   const lockedCampaignId = enrollments.find((e) => e.status === "active")?.campaign_id ?? null;
   const takenRecipients = enrollments
     .filter((e) => e.status === "active" && e.campaign_id === lockedCampaignId)
     .map((e) => (e.recipient_type === "company" ? "company" : `contact:${e.contact_id}`));
-  const enrollNote = !ready
-    ? "Only verified companies can be enrolled in a campaign."
+  const enrollNote = !eligibility.ok
+    ? eligibility.reason
     : !owner
       ? "This company has no owner yet. Assign it to someone first: only its owner can enroll it."
       : `Only ${owner.name}, the owner, can enroll this company.`;
