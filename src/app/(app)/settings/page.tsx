@@ -5,7 +5,8 @@ import { createClient } from "@/lib/supabase/server";
 import { PicklistSection } from "./picklist-section";
 import { McpConnection } from "./mcp-connection";
 import { PipelineSettings } from "./pipeline-settings";
-import { fetchPipeline } from "@/lib/pipeline";
+import { fetchPipeline, fetchVerifiedRule } from "@/lib/pipeline";
+import { RulesSettings } from "./rules-settings";
 
 export const dynamic = "force-dynamic";
 
@@ -35,7 +36,7 @@ export default async function SettingsPage() {
   const user = await getCurrentUser();
   if (user?.role !== "super_admin") redirect("/");
 
-  const pipeline = await fetchPipeline({ all: true, counts: true });
+  const [pipeline, verifiedRule] = await Promise.all([fetchPipeline({ all: true, counts: true }), fetchVerifiedRule()]);
   const supabase = await createClient();
   const { data } = await supabase
     .from("picklist_values")
@@ -59,6 +60,8 @@ export default async function SettingsPage() {
       </div>
 
       <PipelineSettings statuses={pipeline} />
+
+      {verifiedRule && <RulesSettings statuses={pipeline} rule={verifiedRule} />}
 
       <McpConnection mcpUrl={mcpUrl} apiKey={process.env.MCP_API_KEY ?? null} />
 

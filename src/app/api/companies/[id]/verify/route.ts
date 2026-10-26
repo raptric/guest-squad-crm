@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/current-user";
 import { withTransaction } from "@/lib/db";
+import { applyVerifiedRule } from "@/lib/pipeline";
 import {
   VERIFICATION_INCOMPLETE,
   VERIFICATION_READY,
@@ -13,7 +14,7 @@ const fail = (error: string, status = 400) => NextResponse.json({ error }, { sta
 //   { has_errors: false }                              -> Ready for Outreach
 //   { has_errors: true, fields: [...], fixed_all: true }  -> Ready for Outreach
 //   { has_errors: true, fields: [...], fixed_all: false } -> Qualified - Incomplete
-// lead_status is never touched.
+// lead_status is never touched. A Ready for Outreach result also runs the "when verified" pipeline rule from Settings.
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const reviewer = await getCurrentUser();
   if (!reviewer) return fail("Unauthorized", 401);
@@ -46,9 +47,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const outcome = body.has_errors && fixedAll === false ? VERIFICATION_INCOMPLETE : VERIFICATION_READY;
 
   const result = await withTransaction(async (client) => {
-    const company = (await client.query("SELECT c.id, c.lead_status, ps.name AS status_name FROM companies c LEFT JOIN pipeline_statuses ps ON ps.id = c.pipeline_status_id WHERE c.id = $1 AND c.deleted_at IS NULL FOR UPDATE OF c", [id])).rows[0];
+    const company = (await client.query("SELECT c.id, c.lead_status, c.verification_status, ps.name AS status_name FROM companies c LEFT JOIN pipeline_statuses ps ON ps.id = c.pipeline_status_id WHERE c.id = $1 AND c.deleted_at IS NULL FOR UPDATE OF c", [id])).rows[0];
     if (!company) return { error: "Company not found", status: 404 };
-    if (company.lead_status !== "Qualified" && company.status_name !== "Qualified") return { error: "Only Qualified companies can be verified", status: 400 };
+    // Already-verified companies can be re-verified even if the rule has since moved them past Qualified.
+    if (company.lead_status !== "Qualified" && company.status_name !== "Qualified" && company.verification_status === null) return { error: "Only Qualified companies can be verified", status: 400 };
 
     const review = (
       await client.query(
@@ -77,9 +79,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
        VALUES ($1, 'qualification', 'human', $2, $3, $4)`,
       [id, reviewer.name, summary, JSON.stringify({ review_id: review.id, outcome, fields })]
     );
-    return { review_id: Number(review.id) };
+    const movedTo = outcome === VERIFICATION_READY ? await applyVerifiedRule(client, reviewer, Number(id)) : null;
+    return { review_id: Number(review.id), moved_to: movedTo };
   });
 
   if ("error" in result) return fail(result.error as string, result.status as number);
-  return NextResponse.json({ ok: true, verification_status: outcome, review_id: result.review_id });
+  return NextResponse.json({ ok: true, verification_status: outcome, review_id: result.review_id, moved_to: result.moved_to });
 }
