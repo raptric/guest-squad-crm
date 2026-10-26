@@ -22,6 +22,7 @@ export const HAS_OPTIONS = [
 export type Filters = {
   q: string;
   status: string[];
+  stage: string[];
   verification: string[];
   tier: string[];
   country: string[];
@@ -75,6 +76,7 @@ export function parseFilters(raw: Raw): Filters {
   return {
     q: one(raw, "q"),
     status: list(raw, "status"),
+    stage: list(raw, "stage"),
     verification: list(raw, "verification"),
     tier: list(raw, "tier"),
     country: list(raw, "country"),

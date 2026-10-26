@@ -4,12 +4,17 @@ import { getCurrentUser } from "@/lib/current-user";
 import { createClient } from "@/lib/supabase/server";
 import { PicklistSection } from "./picklist-section";
 import { McpConnection } from "./mcp-connection";
+import { PipelineSettings } from "./pipeline-settings";
+import { fetchPipeline } from "@/lib/pipeline";
 
 export const dynamic = "force-dynamic";
 
+const LEGACY_FIELDS: { title: string; fieldName: string }[] = [
+  { title: "Lead Status (old)", fieldName: "lead_status" },
+  { title: "Lifecycle Stage (old)", fieldName: "lifecycle_stage" },
+];
+
 const FIELDS: { title: string; fieldName: string }[] = [
-  { title: "Lead Status", fieldName: "lead_status" },
-  { title: "Lifecycle Stage", fieldName: "lifecycle_stage" },
   { title: "Company Type", fieldName: "company_type" },
   { title: "Property Type", fieldName: "property_type" },
   { title: "Property Class", fieldName: "property_class" },
@@ -30,6 +35,7 @@ export default async function SettingsPage() {
   const user = await getCurrentUser();
   if (user?.role !== "super_admin") redirect("/");
 
+  const pipeline = await fetchPipeline({ all: true, counts: true });
   const supabase = await createClient();
   const { data } = await supabase
     .from("picklist_values")
@@ -52,6 +58,8 @@ export default async function SettingsPage() {
         <p className="text-sm text-zinc-500">Manage dropdown values used across Companies.</p>
       </div>
 
+      <PipelineSettings statuses={pipeline} />
+
       <McpConnection mcpUrl={mcpUrl} apiKey={process.env.MCP_API_KEY ?? null} />
 
       {FIELDS.map(({ title, fieldName }) => (
@@ -62,6 +70,18 @@ export default async function SettingsPage() {
           values={data?.filter((v) => v.field_name === fieldName) ?? []}
         />
       ))}
+
+      <section className="space-y-3">
+        <div>
+          <h2 className="text-sm font-semibold text-zinc-900">Old fields (kept for now)</h2>
+          <p className="text-xs text-zinc-500">
+            The research agent, the scraper and the Review Queue still use these two lists. They are replaced by Statuses &amp; stages above once the MCP is updated.
+          </p>
+        </div>
+        {LEGACY_FIELDS.map(({ title, fieldName }) => (
+          <PicklistSection key={fieldName} title={title} fieldName={fieldName} values={data?.filter((v) => v.field_name === fieldName) ?? []} />
+        ))}
+      </section>
     </div>
   );
 }

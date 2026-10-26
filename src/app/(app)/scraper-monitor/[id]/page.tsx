@@ -7,7 +7,7 @@ import { AutoRefresh } from "../auto-refresh";
 import { BatchStatusButton } from "../batch-status-button";
 import { abs, deriveState, fetchBatches, fetchLastPushes, pct } from "../data";
 import { Card, Meter, StatusPill } from "../parts";
-import { LEAD_STATUS_BADGE } from "../status";
+import { statusChip } from "@/lib/pipeline-format";
 
 export const dynamic = "force-dynamic";
 
@@ -21,7 +21,9 @@ type CompanyRow = {
   phone: string | null;
   website: string | null;
   email: string | null;
-  lead_status: string;
+  status_name: string | null;
+  status_color: string | null;
+  stage_name: string | null;
   created_at: Date;
   rating: string | null;
   review_count: number | null;
@@ -58,8 +60,10 @@ export default async function CampaignPage({
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const page = Math.min(requestedPage, pages);
   const companies = await query<CompanyRow>(
-    `SELECT c.id, c.name, c.city, c.state, c.phone, c.website, c.email, c.lead_status, c.created_at, r.rating, r.review_count
+    `SELECT c.id, c.name, c.city, c.state, c.phone, c.website, c.email, ps.name AS status_name, ps.color AS status_color, pst.name AS stage_name, c.created_at, r.rating, r.review_count
        FROM companies c
+       LEFT JOIN pipeline_statuses ps ON ps.id = c.pipeline_status_id
+       LEFT JOIN pipeline_stages pst ON pst.id = c.pipeline_stage_id
        LEFT JOIN LATERAL (
          SELECT rating, review_count FROM company_ratings
           WHERE company_id = c.id AND channel = 'google' ORDER BY captured_at DESC NULLS LAST LIMIT 1
@@ -206,9 +210,8 @@ export default async function CampaignPage({
                       )}
                     </td>
                     <td className="px-3 py-3">
-                      <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${LEAD_STATUS_BADGE[c.lead_status] ?? "bg-slate-100 text-slate-700"}`}>
-                        {c.lead_status}
-                      </span>
+                      <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${statusChip(c.status_color)}`}>{c.status_name ?? "—"}</span>
+                      {c.stage_name && <div className="mt-1 text-xs text-slate-500">{c.stage_name}</div>}
                     </td>
                     <td className="whitespace-nowrap px-5 py-3 text-slate-500" title={abs(c.created_at)}>
                       {timeAgo(c.created_at)}

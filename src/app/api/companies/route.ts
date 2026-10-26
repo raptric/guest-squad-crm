@@ -24,7 +24,7 @@ export async function POST(request: Request) {
 
   const { data: company, error } = await supabase
     .from("companies")
-    .insert({ ...fields, source: "manual" })
+    .insert({ ...fields, lifecycle_stage: "Lead", lead_status: "New", source: "manual" })
     .select("id")
     .single();
 

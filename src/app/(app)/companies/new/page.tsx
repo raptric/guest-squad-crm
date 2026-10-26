@@ -9,8 +9,6 @@ export default async function NewCompanyPage() {
   const supabase = await createClient();
   const [
     { actor, users },
-    lifecycleStages,
-    leadStatuses,
     companyTypes,
     propertyTypes,
     propertyClasses,
@@ -19,8 +17,6 @@ export default async function NewCompanyPage() {
     countries,
   ] = await Promise.all([
     getCurrentUser().then(async (actor) => ({ actor, users: actor && canAssign(actor) ? await assignableUsers(actor) : [] })),
-    getPicklistValues("lifecycle_stage"),
-    getPicklistValues("lead_status"),
     getPicklistValues("company_type"),
     getPicklistValues("property_type"),
     getPicklistValues("property_class"),
@@ -41,8 +37,6 @@ export default async function NewCompanyPage() {
       <CompanyForm
         users={users}
         canAssign={canAssign(actor)}
-        lifecycleStages={lifecycleStages}
-        leadStatuses={leadStatuses}
         companyTypes={companyTypes}
         propertyTypes={propertyTypes}
         propertyClasses={propertyClasses}

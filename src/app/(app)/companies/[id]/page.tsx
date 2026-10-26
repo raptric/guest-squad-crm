@@ -38,6 +38,8 @@ import { assignableUsers, canAssign } from "@/lib/assignment";
 import { fetchActiveCampaigns, fetchCompanyEnrollments, READY_FOR_OUTREACH } from "@/lib/campaigns";
 import { todayUtc } from "@/lib/campaigns-format";
 import { CampaignCard } from "./campaign-card";
+import { PipelineEditor } from "./pipeline-editor";
+import { fetchPipeline } from "@/lib/pipeline";
 import { timeAgo } from "@/lib/time-ago";
 
 export const dynamic = "force-dynamic";
@@ -54,7 +56,7 @@ export default async function CompanyDetailPage({
     .from("companies")
     .select(
       `id, name, website, company_type, address_line_1, address_line_2, city, state, country, zip, phone, email,
-       lifecycle_stage, lead_status, verification_status, prospect_tier, qualification_summary, sdr_signal_summary, portfolio_size,
+       lifecycle_stage, lead_status, pipeline_status_id, pipeline_stage_id, verification_status, prospect_tier, qualification_summary, sdr_signal_summary, portfolio_size,
        parent_company:parent_company_id ( id, name ),
        owner:owner_id ( id, name, team_id ),
        team:team_id ( id, name )`
@@ -77,7 +79,6 @@ export default async function CompanyDetailPage({
   const lastReview = lastReviewRow
     ? { reviewer: lastReviewRow.reviewer_name, when: timeAgo(lastReviewRow.created_at), hadErrors: lastReviewRow.had_errors, notes: lastReviewRow.notes }
     : null;
-  const showVerify = company.lead_status === "Qualified" || company.verification_status !== null;
 
   const parentCompany = company.parent_company as unknown as { id: number; name: string } | null;
   const owner = company.owner as unknown as { id: number; name: string; team_id: number | null } | null;
@@ -173,7 +174,8 @@ export default async function CompanyDetailPage({
     : { data: null };
 
   // Options for the inline dropdowns. A legacy value no longer in a picklist stays selectable.
-  const [countries, tiers, propertyTypes, propertyClasses, portfolioRoles, { actor, users: assignUsers }] = await Promise.all([
+  const [pipeline, countries, tiers, propertyTypes, propertyClasses, portfolioRoles, { actor, users: assignUsers }] = await Promise.all([
+    fetchPipeline({ all: true }),
     getPicklistValues("country"),
     getPicklistValues("prospect_tier"),
     getPicklistValues("property_type"),
@@ -199,6 +201,10 @@ export default async function CompanyDetailPage({
       isOwner ||
       (actor.role === "team_lead" && !!actor.team_id && (String(team?.id) === String(actor.team_id) || String(owner?.team_id) === String(actor.team_id))));
   const showCampaign = ready || enrollments.length > 0;
+  // Status / stage (the pipeline). Who may change it is the same set of people who can work the company's tasks.
+  const pipelineStatus = pipeline.find((s) => s.id === String(company.pipeline_status_id));
+  const pipelineStage = pipelineStatus?.stages.find((g) => g.id === String(company.pipeline_stage_id));
+  const showVerify = company.lead_status === "Qualified" || pipelineStatus?.name === "Qualified" || company.verification_status !== null;
   const lockedCampaignId = enrollments.find((e) => e.status === "active")?.campaign_id ?? null;
   const takenRecipients = enrollments
     .filter((e) => e.status === "active" && e.campaign_id === lockedCampaignId)
@@ -209,12 +215,6 @@ export default async function CompanyDetailPage({
       ? "This company has no owner yet. Assign it to someone first: only its owner can enroll it."
       : `Only ${owner.name}, the owner, can enroll this company.`;
 
-  const LEAD_CHIP: Record<string, string> = {
-    New: "bg-sky-100 text-sky-800",
-    Qualified: "bg-emerald-100 text-emerald-800",
-    "Needs Review": "bg-amber-100 text-amber-800",
-    DisQualified: "bg-zinc-200 text-zinc-600",
-  };
   const inline = { companyId, target: "company" as const };
   const prop = { companyId, target: "property" as const };
   const websiteHref = company.website ? (/^https?:\/\//i.test(company.website) ? company.website : `https://${company.website}`) : null;
@@ -256,8 +256,18 @@ export default async function CompanyDetailPage({
               <InlineField {...inline} field="name" label="Name" value={company.name} variant="title" />
               <div className="flex flex-wrap items-center gap-2 text-xs">
                 <Chip className="bg-zinc-100 text-zinc-700">{company.company_type}</Chip>
-                <Chip className="bg-zinc-100 text-zinc-700">{company.lifecycle_stage}</Chip>
-                <Chip className={LEAD_CHIP[company.lead_status] ?? "bg-zinc-100 text-zinc-700"}>{company.lead_status}</Chip>
+                <PipelineEditor
+                  companyId={companyId}
+                  statuses={pipeline}
+                  current={{
+                    statusId: pipelineStatus?.id ?? null,
+                    stageId: pipelineStage?.id ?? null,
+                    statusName: pipelineStatus?.name ?? null,
+                    stageName: pipelineStage?.name ?? null,
+                    color: pipelineStatus?.color ?? null,
+                  }}
+                  canEdit={canActOnTasks}
+                />
                 {company.verification_status && (
                   <Chip className={company.verification_status === "Ready for Outreach" ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}>
                     {company.verification_status}

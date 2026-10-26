@@ -46,9 +46,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const outcome = body.has_errors && fixedAll === false ? VERIFICATION_INCOMPLETE : VERIFICATION_READY;
 
   const result = await withTransaction(async (client) => {
-    const company = (await client.query("SELECT id, lead_status FROM companies WHERE id = $1 AND deleted_at IS NULL FOR UPDATE", [id])).rows[0];
+    const company = (await client.query("SELECT c.id, c.lead_status, ps.name AS status_name FROM companies c LEFT JOIN pipeline_statuses ps ON ps.id = c.pipeline_status_id WHERE c.id = $1 AND c.deleted_at IS NULL FOR UPDATE OF c", [id])).rows[0];
     if (!company) return { error: "Company not found", status: 404 };
-    if (company.lead_status !== "Qualified") return { error: "Only Qualified companies can be verified", status: 400 };
+    if (company.lead_status !== "Qualified" && company.status_name !== "Qualified") return { error: "Only Qualified companies can be verified", status: 400 };
 
     const review = (
       await client.query(

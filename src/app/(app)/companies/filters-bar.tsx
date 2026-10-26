@@ -12,7 +12,7 @@ import {
 import type { Facets, Option } from "@/lib/companies/list-query";
 
 const input = "w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-100";
-const MULTI_KEYS = ["status", "verification", "tier", "country", "state", "ctype", "ptype", "pclass", "owner", "team", "batch", "source"];
+const MULTI_KEYS = ["status", "stage", "verification", "tier", "country", "state", "ctype", "ptype", "pclass", "owner", "team", "batch", "source"];
 
 // Every control writes straight to the URL (no Apply button); the page re-renders with the new results.
 export function FiltersBar({ facets }: { facets: Facets }) {
@@ -61,6 +61,7 @@ export function FiltersBar({ facets }: { facets: Facets }) {
   };
   addOne("q", `Search: "${sp.get("q")}"`);
   addMulti("status", (v) => v);
+  addMulti("stage", (v) => labelOf(facets.stages, v));
   addMulti("verification", (v) => v);
   addMulti("tier", (v) => v);
   addMulti("country", (v) => v);
@@ -162,7 +163,8 @@ export function FiltersBar({ facets }: { facets: Facets }) {
       {open && (
         <div className="grid gap-6 rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm md:grid-cols-2 xl:grid-cols-4">
           <Column title="Status">
-            {check("Lead status", "status", plain(facets.statuses))}
+            {check("Status", "status", facets.statuses)}
+            {check("Stage", "stage", facets.stages)}
             {check("Verification", "verification", plain([...VERIFICATION_OPTIONS]))}
             {check("Tier", "tier", plain([...facets.tiers, NO_TIER]))}
           </Column>

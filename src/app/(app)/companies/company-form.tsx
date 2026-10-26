@@ -19,8 +19,6 @@ export type CompanyInitialValues = {
   zip: string | null;
   phone: string | null;
   email: string | null;
-  lifecycle_stage: string;
-  lead_status: string;
   prospect_tier: string | null;
   qualification_summary: string | null;
   sdr_signal_summary: string | null;
@@ -36,8 +34,6 @@ export function CompanyForm({
   users,
   canAssign,
   ownerName,
-  lifecycleStages,
-  leadStatuses,
   companyTypes,
   propertyTypes,
   propertyClasses,
@@ -51,8 +47,6 @@ export function CompanyForm({
   // Only team leads and admins can choose an owner; everyone else sees a note instead of the dropdown.
   canAssign: boolean;
   ownerName?: string | null;
-  lifecycleStages: string[];
-  leadStatuses: string[];
   companyTypes: string[];
   propertyTypes: string[];
   propertyClasses: string[];
@@ -229,22 +223,9 @@ export function CompanyForm({
       )}
 
       <fieldset className="space-y-4 rounded-lg border border-zinc-200 bg-white p-6">
-        <legend className="px-1 text-sm font-semibold text-zinc-900">Lifecycle &amp; Qualification</legend>
+        <legend className="px-1 text-sm font-semibold text-zinc-900">Qualification</legend>
 
-        <div className="grid grid-cols-2 gap-3">
-          <SelectField
-            label="Lifecycle Stage"
-            name="lifecycle_stage"
-            options={lifecycleStages}
-            defaultValue={initialValues?.lifecycle_stage}
-          />
-          <SelectField
-            label="Lead Status"
-            name="lead_status"
-            options={leadStatuses}
-            defaultValue={initialValues?.lead_status}
-          />
-        </div>
+        <p className="text-xs text-zinc-500">Status and stage are set from the company page after it is saved.</p>
 
         <SelectField
           label="Prospect Tier"

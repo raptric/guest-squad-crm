@@ -6,16 +6,11 @@ import { getCurrentUser } from "@/lib/current-user";
 import { assignableUsers, canAssign } from "@/lib/assignment";
 import { fetchWorkload } from "@/lib/companies/workload";
 import { FiltersBar } from "./filters-bar";
+import { statusChip } from "@/lib/pipeline-format";
 import { HeaderCheck, RowCheck, SelectionBanner, SelectionProvider } from "./assignment";
 
 export const dynamic = "force-dynamic";
 
-const LEAD_CHIP: Record<string, string> = {
-  New: "bg-sky-100 text-sky-800",
-  Qualified: "bg-emerald-100 text-emerald-800",
-  "Needs Review": "bg-amber-100 text-amber-800",
-  DisQualified: "bg-zinc-200 text-zinc-600",
-};
 const TIER_CHIP: Record<string, string> = {
   "Tier 1": "bg-violet-100 text-violet-800",
   "Tier 2": "bg-sky-100 text-sky-800",
@@ -159,7 +154,7 @@ export default async function CompaniesPage({ searchParams }: { searchParams: Pr
                   {sortTh("Location", "city")}
                   <th className="px-3 py-3">Type</th>
                   {sortTh("Tier", "tier")}
-                  {sortTh("Lead status", "status")}
+                  {sortTh("Status", "status")}
                   <th className="px-3 py-3">Verification</th>
                   {sortTh("Owner", "owner")}
                   <th className="px-3 py-3">Team</th>
@@ -205,14 +200,15 @@ export default async function CompaniesPage({ searchParams }: { searchParams: Pr
                       )}
                     </td>
                     <td className="px-3 py-3">
-                      <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${LEAD_CHIP[c.lead_status] ?? "bg-zinc-100 text-zinc-700"}`}>{c.lead_status}</span>
+                      <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${statusChip(c.status_color)}`}>{c.status_name ?? "—"}</span>
+                      {c.stage_name && <div className="mt-1 text-xs text-zinc-500">{c.stage_name}</div>}
                     </td>
                     <td className="px-3 py-3">
                       {c.verification_status ? (
                         <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${c.verification_status === "Ready for Outreach" ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}`}>
                           {c.verification_status}
                         </span>
-                      ) : c.lead_status === "Qualified" ? (
+                      ) : c.status_name === "Qualified" || c.lead_status === "Qualified" ? (
                         <span className="text-xs text-zinc-400">Not verified</span>
                       ) : (
                         <span className="text-zinc-300">—</span>

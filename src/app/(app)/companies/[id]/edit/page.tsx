@@ -17,8 +17,6 @@ export default async function EditCompanyPage({
   const [
     { data: company },
     { actor, users },
-    lifecycleStages,
-    leadStatuses,
     companyTypes,
     propertyTypes,
     propertyClasses,
@@ -30,7 +28,7 @@ export default async function EditCompanyPage({
       .from("companies")
       .select(
         `id, name, website, company_type, address_line_1, address_line_2, city, state, country, zip, phone, email,
-         lifecycle_stage, lead_status, prospect_tier, qualification_summary, sdr_signal_summary,
+         prospect_tier, qualification_summary, sdr_signal_summary,
          owner_id, portfolio_size,
          parent_company:parent_company_id ( id, name, company_type )`
       )
@@ -38,8 +36,6 @@ export default async function EditCompanyPage({
       .is("deleted_at", null)
       .single(),
     getCurrentUser().then(async (actor) => ({ actor, users: actor && canAssign(actor) ? await assignableUsers(actor) : [] })),
-    getPicklistValues("lifecycle_stage"),
-    getPicklistValues("lead_status"),
     getPicklistValues("company_type"),
     getPicklistValues("property_type"),
     getPicklistValues("property_class"),
@@ -57,12 +53,6 @@ export default async function EditCompanyPage({
   // If this record still has a legacy value no longer in the active picklist, keep it
   // selectable (as its current value) instead of silently switching the dropdown to the
   // first active option.
-  const lifecycleStageOptions = lifecycleStages.includes(company.lifecycle_stage)
-    ? lifecycleStages
-    : [company.lifecycle_stage, ...lifecycleStages];
-  const leadStatusOptions = leadStatuses.includes(company.lead_status)
-    ? leadStatuses
-    : [company.lead_status, ...leadStatuses];
 
   const countryOptions =
     !company.country || countries.includes(company.country) ? countries : [company.country, ...countries];
@@ -89,8 +79,6 @@ export default async function EditCompanyPage({
     zip: company.zip,
     phone: company.phone,
     email: company.email,
-    lifecycle_stage: company.lifecycle_stage,
-    lead_status: company.lead_status,
     prospect_tier: company.prospect_tier,
     qualification_summary: company.qualification_summary,
     sdr_signal_summary: company.sdr_signal_summary,
@@ -115,8 +103,6 @@ export default async function EditCompanyPage({
         users={users}
         canAssign={canAssign(actor)}
         ownerName={ownerName}
-        lifecycleStages={lifecycleStageOptions}
-        leadStatuses={leadStatusOptions}
         companyTypes={companyTypes}
         propertyTypes={propertyTypes}
         propertyClasses={propertyClasses}

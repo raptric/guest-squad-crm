@@ -1,4 +1,5 @@
 import { query } from "@/lib/db";
+import { fetchPipeline } from "@/lib/pipeline";
 import { NO_TIER, type Filters, type SortKey } from "./list-filters";
 
 // Companies page data: one filtered, sorted, paged query plus a count and the option lists for the filters.
@@ -7,6 +8,8 @@ import { NO_TIER, type Filters, type SortKey } from "./list-filters";
 export const FROM = `
   FROM companies c
   LEFT JOIN property_details pd ON pd.company_id = c.id
+  LEFT JOIN pipeline_statuses ps ON ps.id = c.pipeline_status_id
+  LEFT JOIN pipeline_stages pst ON pst.id = c.pipeline_stage_id
   LEFT JOIN users o ON o.id = c.owner_id
   LEFT JOIN teams t ON t.id = c.team_id
   LEFT JOIN companies par ON par.id = c.parent_company_id
@@ -21,7 +24,7 @@ const SORT_SQL: Record<SortKey, string> = {
   name: "lower(c.name)",
   city: "lower(c.city)",
   tier: "c.prospect_tier",
-  status: "c.lead_status",
+  status: "(ps.sort_order * 1000 + pst.sort_order)",
   owner: "lower(o.name)",
   rating: "g.rating",
   rooms: "pd.rooms_units",
@@ -42,7 +45,8 @@ export function buildWhere(f: Filters) {
     const p = add(like(f.q));
     where.push(`(c.name ILIKE ${p} OR c.city ILIKE ${p} OR c.website ILIKE ${p} OR c.phone ILIKE ${p} OR c.email ILIKE ${p} OR c.address_line_1 ILIKE ${p})`);
   }
-  if (f.status.length) where.push(`c.lead_status = ANY(${add(f.status)})`);
+  if (f.status.length) where.push(`ps.name = ANY(${add(f.status)})`);
+  if (f.stage.length) where.push(`c.pipeline_stage_id = ANY(${add(f.stage.filter((v) => /^\d+$/.test(v)).map(Number))})`);
   if (f.verification.length) {
     const p = add(f.verification);
     where.push(`(c.verification_status = ANY(${p}) OR (c.verification_status IS NULL AND 'Not verified' = ANY(${p})))`);
@@ -108,6 +112,9 @@ export type CompanyRow = {
   country: string | null;
   company_type: string;
   lead_status: string;
+  status_name: string | null;
+  status_color: string | null;
+  stage_name: string | null;
   verification_status: string | null;
   prospect_tier: string | null;
   source: string | null;
@@ -132,7 +139,7 @@ export async function fetchCompanies(f: Filters) {
 
   const [rows, [{ total }]] = await Promise.all([
     query<CompanyRow>(
-      `SELECT c.id, c.name, c.city, c.state, c.country, c.company_type, c.lead_status, c.verification_status,
+      `SELECT c.id, c.name, c.city, c.state, c.country, c.company_type, c.lead_status, ps.name AS status_name, ps.color AS status_color, pst.name AS stage_name, c.verification_status,
               c.prospect_tier, c.source, c.created_at, o.name AS owner_name, t.name AS team_name,
               pd.property_type, pd.property_class, pd.rooms_units, pd.portfolio_role,
               par.id AS parent_id, par.name AS parent_name, b.campaign_name,
@@ -157,7 +164,8 @@ export type Facets = {
   owners: Option[];
   teams: Option[];
   batches: Option[];
-  statuses: string[];
+  statuses: Option[];
+  stages: Option[];
   tiers: string[];
   ptypes: string[];
   pclasses: string[];
@@ -166,6 +174,7 @@ export type Facets = {
 
 // Option lists for the filter panel, in one round trip.
 export async function fetchFacets(): Promise<Facets> {
+  const pipeline = await fetchPipeline();
   const [{ f }] = await query<{ f: Record<string, unknown> }>(`
     SELECT json_build_object(
       'countries', (SELECT coalesce(json_agg(json_build_object('value', v, 'label', v, 'n', n) ORDER BY n DESC), '[]'::json)
@@ -179,7 +188,7 @@ export async function fetchFacets(): Promise<Facets> {
       'batches', (SELECT coalesce(json_agg(json_build_object('value', id::text, 'label', campaign_name) ORDER BY created_at DESC), '[]'::json) FROM import_batches),
       'picklists', (SELECT coalesce(json_object_agg(field_name, vals), '{}'::json)
                       FROM (SELECT field_name, json_agg(value ORDER BY sort_order, id) vals FROM picklist_values
-                             WHERE is_active AND field_name IN ('lead_status','prospect_tier','property_type','property_class','company_type')
+                             WHERE is_active AND field_name IN ('prospect_tier','property_type','property_class','company_type')
                              GROUP BY field_name) p)
     ) AS f`);
   const pick = (f.picklists ?? {}) as Record<string, string[]>;
@@ -190,7 +199,8 @@ export async function fetchFacets(): Promise<Facets> {
     owners: f.owners as Option[],
     teams: f.teams as Option[],
     batches: f.batches as Option[],
-    statuses: pick.lead_status ?? [],
+    statuses: pipeline.map((s) => ({ value: s.name, label: s.name })),
+    stages: pipeline.flatMap((s) => s.stages.map((g) => ({ value: g.id, label: `${s.name} › ${g.name}` }))),
     tiers: pick.prospect_tier ?? [],
     ptypes: pick.property_type ?? [],
     pclasses: pick.property_class ?? [],
