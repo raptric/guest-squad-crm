@@ -20,7 +20,7 @@ export async function PATCH(request: Request) {
   if (body.is_enabled !== undefined && typeof body.is_enabled !== "boolean") return fail("is_enabled must be true or false.");
   if (!wantsTarget && body.is_enabled === undefined) return fail("Nothing to change.");
 
-  const result = await withTransaction(async (client) => {
+  const result = await withTransaction<{ error: string } | { ok: true }>(async (client) => {
     if (wantsTarget) {
       const [target] = (
         await client.query(
