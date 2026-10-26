@@ -10,12 +10,13 @@ import {
   VERIFICATION_OPTIONS,
 } from "@/lib/companies/list-filters";
 import type { Facets, Option } from "@/lib/companies/list-query";
+import { STATUS_COLORS, statusChip } from "@/lib/pipeline-format";
 
 const input = "w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-100";
 const MULTI_KEYS = ["status", "stage", "verification", "tier", "country", "state", "ctype", "ptype", "pclass", "owner", "team", "batch", "source"];
 
 // Every control writes straight to the URL (no Apply button); the page re-renders with the new results.
-export function FiltersBar({ facets }: { facets: Facets }) {
+export function FiltersBar({ facets, counts }: { facets: Facets; counts: { status: Record<string, number>; stage: Record<string, number> } }) {
   const router = useRouter();
   const pathname = usePathname();
   const sp = useSearchParams();
@@ -35,6 +36,20 @@ export function FiltersBar({ facets }: { facets: Facets }) {
       p.delete(key);
       (current.includes(value) ? current.filter((v) => v !== value) : [...current, value]).forEach((v) => p.append(key, v));
     });
+  // Status chips: picking / un-picking a status also drops any chosen stage that doesn't belong to the statuses now selected.
+  const toggleStatus = (name: string) =>
+    apply((p) => {
+      const current = p.getAll("status");
+      const next = current.includes(name) ? current.filter((v) => v !== name) : [...current, name];
+      p.delete("status");
+      next.forEach((v) => p.append("status", v));
+      const allowed = new Set(facets.pipeline.filter((s) => next.includes(s.name)).flatMap((s) => s.stages.map((g) => g.id)));
+      const stages = p.getAll("stage").filter((v) => allowed.has(v));
+      p.delete("stage");
+      stages.forEach((v) => p.append("stage", v));
+    });
+  const selectedStatuses = values("status");
+  const stageRowStatus = selectedStatuses.length === 1 ? facets.pipeline.find((s) => s.name === selectedStatuses[0]) : undefined;
   const setOne = (key: string, value: string) =>
     apply((p) => {
       if (value) p.set(key, value);
@@ -85,7 +100,7 @@ export function FiltersBar({ facets }: { facets: Facets }) {
   addOne("addedFrom", `Added from ${sp.get("addedFrom")}`);
   addOne("addedTo", `Added to ${sp.get("addedTo")}`);
 
-  const removeChip = (c: Chip) => (MULTI_KEYS.includes(c.key) ? toggle(c.key, c.value) : setOne(c.key, ""));
+  const removeChip = (c: Chip) => (c.key === "status" ? toggleStatus(c.value) : MULTI_KEYS.includes(c.key) ? toggle(c.key, c.value) : setOne(c.key, ""));
   const clearAll = () =>
     apply((p) => {
       const keep = ["sort", "dir", "size"].map((k) => [k, p.get(k)] as const);
@@ -147,6 +162,47 @@ export function FiltersBar({ facets }: { facets: Facets }) {
         ))}
       </div>
 
+      <div className="space-y-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {facets.pipeline.map((s) => {
+            const on = selectedStatuses.includes(s.name);
+            return (
+              <button
+                key={s.id}
+                type="button"
+                onClick={() => toggleStatus(s.name)}
+                aria-pressed={on}
+                className={`inline-flex items-center gap-2 rounded-xl border px-3 py-1.5 text-sm font-medium transition-colors ${on ? `${statusChip(s.color)} border-transparent ring-2 ring-zinc-900/15` : "border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50"}`}
+              >
+                <span className={`h-2 w-2 rounded-full ${STATUS_COLORS[s.color]?.dot ?? "bg-zinc-400"}`} />
+                {s.name}
+                <span className={`text-xs font-semibold tabular-nums ${on ? "opacity-80" : "text-zinc-400"}`}>{(counts.status[s.id] ?? 0).toLocaleString()}</span>
+              </button>
+            );
+          })}
+        </div>
+        {stageRowStatus && (
+          <div className="flex flex-wrap items-center gap-2 pl-1">
+            <span className="text-xs font-medium uppercase tracking-wide text-zinc-400">{stageRowStatus.name} stage</span>
+            {stageRowStatus.stages.map((g) => {
+              const on = values("stage").includes(g.id);
+              return (
+                <button
+                  key={g.id}
+                  type="button"
+                  onClick={() => toggle("stage", g.id)}
+                  aria-pressed={on}
+                  className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium ${on ? "border-zinc-900 bg-zinc-900 text-white" : "border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50"}`}
+                >
+                  {g.name}
+                  <span className={`tabular-nums ${on ? "text-white/70" : "text-zinc-400"}`}>{(counts.stage[g.id] ?? 0).toLocaleString()}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
       {chips.length > 0 && (
         <div className="flex flex-wrap gap-2">
           {chips.map((c) => (
@@ -163,8 +219,16 @@ export function FiltersBar({ facets }: { facets: Facets }) {
       {open && (
         <div className="grid gap-6 rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm md:grid-cols-2 xl:grid-cols-4">
           <Column title="Status">
-            {check("Status", "status", facets.statuses)}
-            {check("Stage", "stage", facets.stages)}
+            {facets.pipeline.map((s) => (
+              <CheckGroup
+                key={`stage-${s.id}`}
+                title={`${s.name} stage`}
+                options={s.stages.map((g) => ({ value: g.id, label: g.name, n: counts.stage[g.id] ?? 0 }))}
+                searchable={false}
+                selected={values("stage").filter((v) => s.stages.some((g) => g.id === v))}
+                onToggle={(v) => toggle("stage", v)}
+              />
+            ))}
             {check("Verification", "verification", plain([...VERIFICATION_OPTIONS]))}
             {check("Tier", "tier", plain([...facets.tiers, NO_TIER]))}
           </Column>

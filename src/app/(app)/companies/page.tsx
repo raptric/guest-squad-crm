@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { PAGE_SIZES, parseFilters, type SortKey } from "@/lib/companies/list-filters";
-import { fetchCompanies, fetchFacets } from "@/lib/companies/list-query";
+import { fetchCompanies, fetchFacets, fetchPipelineCounts } from "@/lib/companies/list-query";
 import { timeAgo } from "@/lib/time-ago";
 import { getCurrentUser } from "@/lib/current-user";
 import { assignableUsers, canAssign } from "@/lib/assignment";
@@ -36,7 +36,7 @@ export default async function CompaniesPage({ searchParams }: { searchParams: Pr
   const raw = await searchParams;
   const f = parseFilters(raw);
 
-  const [first, facets, actor] = await Promise.all([fetchCompanies(f), fetchFacets(), getCurrentUser()]);
+  const [first, facets, actor, pipelineCounts] = await Promise.all([fetchCompanies(f), fetchFacets(), getCurrentUser(), fetchPipelineCounts(f)]);
   // Only team leads and admins can assign; for everyone else the page has no checkboxes or assign controls.
   const mayAssign = canAssign(actor);
   const isAdmin = actor?.role === "super_admin";
@@ -138,7 +138,7 @@ export default async function CompaniesPage({ searchParams }: { searchParams: Pr
       {(() => {
         const body = (
           <>
-          <FiltersBar facets={facets} />
+          <FiltersBar facets={facets} counts={pipelineCounts} />
 
           {mayAssign && <SelectionBanner />}
           <div className="overflow-x-auto rounded-2xl border border-zinc-200 bg-white shadow-sm">

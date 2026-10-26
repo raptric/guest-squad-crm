@@ -113,6 +113,8 @@ export const PRESETS: { label: string; params: Record<string, string | string[]>
   { label: "Qualified", params: { status: "Qualified" } },
   { label: "Needs verification", params: { status: "Qualified", verification: "Not verified" } },
   { label: "Ready for outreach", params: { verification: "Ready for Outreach" } },
+  { label: "In outreach", params: { status: "Prospect" } },
+  { label: "Nurture", params: { status: "Nurture" } },
   { label: "Unassigned", params: { owner: "unassigned" } },
   { label: "Independent", params: { portfolio: "independent" } },
   { label: "Portfolio properties", params: { portfolio: "portfolio" } },

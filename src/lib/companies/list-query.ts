@@ -1,5 +1,6 @@
 import { query } from "@/lib/db";
 import { fetchPipeline } from "@/lib/pipeline";
+import type { PipelineStatus } from "@/lib/pipeline-format";
 import { NO_TIER, type Filters, type SortKey } from "./list-filters";
 
 // Companies page data: one filtered, sorted, paged query plus a count and the option lists for the filters.
@@ -158,6 +159,7 @@ export async function fetchCompanies(f: Filters) {
 
 export type Option = { value: string; label: string; n?: number };
 export type Facets = {
+  pipeline: PipelineStatus[];
   countries: Option[];
   states: Option[];
   sources: Option[];
@@ -193,6 +195,7 @@ export async function fetchFacets(): Promise<Facets> {
     ) AS f`);
   const pick = (f.picklists ?? {}) as Record<string, string[]>;
   return {
+    pipeline,
     countries: f.countries as Option[],
     states: f.states as Option[],
     sources: f.sources as Option[],
@@ -206,4 +209,21 @@ export async function fetchFacets(): Promise<Facets> {
     pclasses: pick.property_class ?? [],
     ctypes: pick.company_type ?? [],
   };
+}
+
+// How many companies sit in each status and stage under the current filters, ignoring the status / stage choice itself
+// (so the chips can be switched between without the other counts going to zero). Keys are ids.
+export async function fetchPipelineCounts(f: Filters): Promise<{ status: Record<string, number>; stage: Record<string, number> }> {
+  const { sql, params } = buildWhere({ ...f, status: [], stage: [] });
+  const rows = await query<{ status_id: string | null; stage_id: string | null; n: number }>(
+    `SELECT c.pipeline_status_id::text AS status_id, c.pipeline_stage_id::text AS stage_id, count(*)::int AS n ${FROM} WHERE ${sql} GROUP BY 1, 2`,
+    params
+  );
+  const status: Record<string, number> = {};
+  const stage: Record<string, number> = {};
+  for (const r of rows) {
+    if (r.status_id) status[r.status_id] = (status[r.status_id] ?? 0) + r.n;
+    if (r.stage_id) stage[r.stage_id] = (stage[r.stage_id] ?? 0) + r.n;
+  }
+  return { status, stage };
 }
