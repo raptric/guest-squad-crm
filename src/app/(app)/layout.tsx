@@ -4,7 +4,8 @@ import { LogoutButton } from "./logout-button";
 import { NavLink } from "./nav-link";
 import { canAssign } from "@/lib/assignment";
 import { fetchUnassignedBadge } from "@/lib/companies/workload";
-import { BuildingIcon, ChartIcon, ClipboardCheckIcon, CogIcon, GridIcon, UserIcon, UsersIcon } from "./icons";
+import { fetchTaskBadge } from "@/lib/campaigns";
+import { BuildingIcon, ChartIcon, ClipboardCheckIcon, CogIcon, GridIcon, ListCheckIcon, MegaphoneIcon, UserIcon, UsersIcon } from "./icons";
 
 // Every page under here reads live, frequently-mutated data (companies, contacts, signals,
 // users) and gets refreshed via router.refresh() after inline add/edit forms -- without this,
@@ -14,7 +15,10 @@ export const dynamic = "force-dynamic";
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await getCurrentUser();
   // Admins and team leads see how many companies are still waiting to be handed out.
-  const unassigned = canAssign(user) ? await fetchUnassignedBadge(user) : 0;
+  const [unassigned, tasksDue] = await Promise.all([
+    canAssign(user) ? fetchUnassignedBadge(user) : Promise.resolve(0),
+    user ? fetchTaskBadge(user.id) : Promise.resolve(0),
+  ]);
 
   return (
     <div className="flex flex-1">
@@ -29,7 +33,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <NavLink href="/" icon={<GridIcon />}>Dashboard</NavLink>
           <NavLink href="/review" icon={<ClipboardCheckIcon />}>Review Queue</NavLink>
           <NavLink href="/companies" icon={<BuildingIcon />} badge={unassigned}>Companies</NavLink>
+          <NavLink href="/tasks" icon={<ListCheckIcon />} badge={tasksDue} badgeTitle="Tasks due today or overdue">My tasks</NavLink>
           <NavLink href="/contacts" icon={<UserIcon />}>Contacts</NavLink>
+          {user?.role === "super_admin" && <NavLink href="/campaigns" icon={<MegaphoneIcon />}>Campaigns</NavLink>}
           {user?.role === "super_admin" && <NavLink href="/scraper-monitor" icon={<ChartIcon />}>Scraper Monitor</NavLink>}
           {user?.role === "super_admin" && <NavLink href="/users" icon={<UsersIcon />}>Users</NavLink>}
           {user?.role === "super_admin" && <NavLink href="/settings" icon={<CogIcon />}>Settings</NavLink>}

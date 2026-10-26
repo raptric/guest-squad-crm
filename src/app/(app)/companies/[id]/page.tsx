@@ -35,6 +35,9 @@ import {
 import { getPicklistValues } from "@/lib/picklists";
 import { getCurrentUser } from "@/lib/current-user";
 import { assignableUsers, canAssign } from "@/lib/assignment";
+import { fetchActiveCampaigns, fetchCompanyEnrollments, READY_FOR_OUTREACH } from "@/lib/campaigns";
+import { todayUtc } from "@/lib/campaigns-format";
+import { CampaignCard } from "./campaign-card";
 import { timeAgo } from "@/lib/time-ago";
 
 export const dynamic = "force-dynamic";
@@ -53,7 +56,7 @@ export default async function CompanyDetailPage({
       `id, name, website, company_type, address_line_1, address_line_2, city, state, country, zip, phone, email,
        lifecycle_stage, lead_status, verification_status, prospect_tier, qualification_summary, sdr_signal_summary, portfolio_size,
        parent_company:parent_company_id ( id, name ),
-       owner:owner_id ( id, name ),
+       owner:owner_id ( id, name, team_id ),
        team:team_id ( id, name )`
     )
     .eq("id", id)
@@ -77,7 +80,7 @@ export default async function CompanyDetailPage({
   const showVerify = company.lead_status === "Qualified" || company.verification_status !== null;
 
   const parentCompany = company.parent_company as unknown as { id: number; name: string } | null;
-  const owner = company.owner as unknown as { id: number; name: string } | null;
+  const owner = company.owner as unknown as { id: number; name: string; team_id: number | null } | null;
   const team = company.team as unknown as { id: number; name: string } | null;
   const isProperty = company.company_type === "Property";
 
@@ -184,6 +187,27 @@ export default async function CompanyDetailPage({
   const mayAssign = canAssign(actor);
   const ownerOptions = assignUsers.map((u) => ({ value: String(u.id), label: u.name }));
   const companyId = Number(id);
+
+  // Campaign: only the owner of a Ready for Outreach company can enroll it; the owner, their team lead and admins can work its tasks.
+  const isOwner = !!actor && !!owner && String(owner.id) === String(actor.id);
+  const ready = company.verification_status === READY_FOR_OUTREACH;
+  const mayEnroll = ready && isOwner;
+  const [enrollments, campaigns] = await Promise.all([fetchCompanyEnrollments(companyId), mayEnroll ? fetchActiveCampaigns() : Promise.resolve([])]);
+  const canActOnTasks =
+    !!actor &&
+    (actor.role === "super_admin" ||
+      isOwner ||
+      (actor.role === "team_lead" && !!actor.team_id && (String(team?.id) === String(actor.team_id) || String(owner?.team_id) === String(actor.team_id))));
+  const showCampaign = ready || enrollments.length > 0;
+  const lockedCampaignId = enrollments.find((e) => e.status === "active")?.campaign_id ?? null;
+  const takenRecipients = enrollments
+    .filter((e) => e.status === "active" && e.campaign_id === lockedCampaignId)
+    .map((e) => (e.recipient_type === "company" ? "company" : `contact:${e.contact_id}`));
+  const enrollNote = !ready
+    ? "Only companies marked Ready for Outreach can be enrolled in a campaign."
+    : !owner
+      ? "This company has no owner yet. Assign it to someone first: only its owner can enroll it."
+      : `Only ${owner.name}, the owner, can enroll this company.`;
 
   const LEAD_CHIP: Record<string, string> = {
     New: "bg-sky-100 text-sky-800",
@@ -505,7 +529,27 @@ export default async function CompanyDetailPage({
               <VerifyBox companyId={companyId} status={company.verification_status} last={lastReview} />
             </div>
           )}
-          <div className="order-3 min-[1400px]:order-none">
+          {showCampaign && (
+            <div className="order-3 min-[1400px]:order-none">
+              <CampaignCard
+                companyId={companyId}
+                today={todayUtc()}
+                mayEnroll={mayEnroll}
+                enrollNote={enrollNote}
+                canAct={canActOnTasks}
+                enrollments={enrollments}
+                campaigns={campaigns}
+                recipients={contacts.map((c) => {
+                  const email = forThisCompany(c.contact_emails)[0]?.email;
+                  const name = `${c.first_name} ${c.last_name ?? ""}`.trim();
+                  return { id: Number(c.id), label: email ? `${name} (${email})` : name };
+                })}
+                lockedCampaignId={lockedCampaignId}
+                takenRecipients={takenRecipients}
+              />
+            </div>
+          )}
+          <div className="order-4 min-[1400px]:order-none">
             <Card icon={<ClockIcon className="h-5 w-5" />} tone="zinc" title="Activity">
               <div className="space-y-3">
                 <AddActivityForm companyId={companyId} />

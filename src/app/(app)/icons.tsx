@@ -136,3 +136,24 @@ export const CogIcon = make(
     <path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M5.6 18.4l1.8-1.8M16.6 7.4l1.8-1.8" />
   </>
 );
+
+export const MegaphoneIcon = make(
+  <>
+    <path d="M4 10v4a1 1 0 001 1h2l5 4V5L7 9H5a1 1 0 00-1 1z" />
+    <path d="M16 9a4 4 0 010 6M18.5 6.5a8 8 0 010 11" />
+  </>
+);
+export const ListCheckIcon = make(
+  <>
+    <path d="M4 7l1.5 1.5L8 6M4 13l1.5 1.5L8 12M4 19l1.5 1.5L8 18" />
+    <path d="M12 7h8M12 13h8M12 19h8" />
+  </>
+);
+export const TrashIcon = make(
+  <>
+    <path d="M5 7h14M10 4h4M7 7l1 13h8l1-13" />
+    <path d="M10 11v6M14 11v6" />
+  </>
+);
+export const ArrowUpIcon = make(<path d="M12 19V5M6 11l6-6 6 6" />);
+export const ArrowDownIcon = make(<path d="M12 5v14M6 13l6 6 6-6" />);
