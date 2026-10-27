@@ -149,6 +149,7 @@ export const ListCheckIcon = make(
     <path d="M12 7h8M12 13h8M12 19h8" />
   </>
 );
+export const CopyIcon = make(<path d="M9 9h10a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1V10a1 1 0 0 1 1-1zM5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1" />);
 export const TrashIcon = make(
   <>
     <path d="M5 7h14M10 4h4M7 7l1 13h8l1-13" />

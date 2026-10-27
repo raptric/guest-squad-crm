@@ -5,7 +5,7 @@ import { NavLink } from "./nav-link";
 import { canAssign } from "@/lib/assignment";
 import { fetchUnassignedBadge } from "@/lib/companies/workload";
 import { fetchTaskBadge } from "@/lib/campaigns";
-import { BuildingIcon, ChartIcon, ClipboardCheckIcon, CogIcon, GridIcon, ListCheckIcon, MegaphoneIcon, UserIcon, UsersIcon } from "./icons";
+import { BuildingIcon, ChartIcon, ClipboardCheckIcon, CogIcon, CopyIcon, GridIcon, ListCheckIcon, MegaphoneIcon, UserIcon, UsersIcon } from "./icons";
 
 // Every page under here reads live, frequently-mutated data (companies, contacts, signals,
 // users) and gets refreshed via router.refresh() after inline add/edit forms -- without this,
@@ -35,6 +35,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <NavLink href="/companies" icon={<BuildingIcon />} badge={unassigned}>Companies</NavLink>
           <NavLink href="/tasks" icon={<ListCheckIcon />} badge={tasksDue} badgeTitle="Tasks due today or overdue">My tasks</NavLink>
           <NavLink href="/contacts" icon={<UserIcon />}>Contacts</NavLink>
+          {canAssign(user) && <NavLink href="/duplicates" icon={<CopyIcon />}>Duplicates</NavLink>}
           {user?.role === "super_admin" && <NavLink href="/campaigns" icon={<MegaphoneIcon />}>Campaigns</NavLink>}
           {user?.role === "super_admin" && <NavLink href="/scraper-monitor" icon={<ChartIcon />}>Scraper Monitor</NavLink>}
           {user?.role === "super_admin" && <NavLink href="/users" icon={<UsersIcon />}>Users</NavLink>}
