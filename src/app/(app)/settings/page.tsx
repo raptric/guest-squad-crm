@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { PicklistSection } from "./picklist-section";
 import { McpConnection } from "./mcp-connection";
 import { PipelineSettings } from "./pipeline-settings";
-import { fetchPipeline, fetchVerifiedRule } from "@/lib/pipeline";
+import { fetchPipeline, fetchScraperRule, fetchVerifiedRule } from "@/lib/pipeline";
 import { RulesSettings } from "./rules-settings";
 import { fetchEnrollmentRule } from "@/lib/campaign-rule";
 
@@ -37,7 +37,12 @@ export default async function SettingsPage() {
   const user = await getCurrentUser();
   if (user?.role !== "super_admin") redirect("/");
 
-  const [pipeline, verifiedRule, enrollmentRule] = await Promise.all([fetchPipeline({ all: true, counts: true }), fetchVerifiedRule(), fetchEnrollmentRule()]);
+  const [pipeline, verifiedRule, enrollmentRule, scraperRule] = await Promise.all([
+    fetchPipeline({ all: true, counts: true }),
+    fetchVerifiedRule(),
+    fetchEnrollmentRule(),
+    fetchScraperRule(),
+  ]);
   const supabase = await createClient();
   const { data } = await supabase
     .from("picklist_values")
@@ -62,7 +67,15 @@ export default async function SettingsPage() {
 
       <PipelineSettings statuses={pipeline} />
 
-      {verifiedRule && <RulesSettings statuses={pipeline} rule={verifiedRule} enrollmentRule={enrollmentRule} />}
+      {verifiedRule && (
+        <RulesSettings
+          statuses={pipeline}
+          rule={verifiedRule}
+          enrollmentRule={enrollmentRule}
+          scraperRule={scraperRule}
+          propertyTypes={data?.filter((v) => v.field_name === "property_type").map((v) => v.value) ?? []}
+        />
+      )}
 
       <McpConnection mcpUrl={mcpUrl} apiKey={process.env.MCP_API_KEY ?? null} />
 

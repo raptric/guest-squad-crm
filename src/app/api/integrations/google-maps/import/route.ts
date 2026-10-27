@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { matchEnum, matchCountry } from "@/lib/companies/matching";
 import { fetchPicklistValues } from "@/lib/picklists";
+import { fetchScraperRule } from "@/lib/pipeline";
 
 const MAX_BATCH_SIZE = 500;
 
@@ -17,6 +18,7 @@ type IncomingHotel = {
   country?: string;
   google_rating?: string | number;
   google_review_count?: string | number;
+  // Accepted so existing scraper setups don't break, but ignored: the CRM decides where scraped companies start (Settings -> Rules).
   hs_lead_status?: string;
   gs_company_type?: string;
   gs_property_type?: string;
@@ -156,13 +158,27 @@ async function handlePost(request: Request): Promise<Handled> {
   }
 
   const supabase = createAdminClient();
-  const [validLeadStatuses, validCompanyTypes, validPropertyTypes, validCountries] = await Promise.all([
-    fetchPicklistValues(supabase, "lead_status"),
+  const [validCompanyTypes, validPropertyTypes, validCountries, scraperRule] = await Promise.all([
     fetchPicklistValues(supabase, "company_type"),
     fetchPicklistValues(supabase, "property_type"),
     fetchPicklistValues(supabase, "country"),
+    fetchScraperRule(),
   ]);
-  const results: { index: number; status: "created" | "skipped"; company_id?: number; batch_id?: number; error?: string }[] = [];
+  const results: { index: number; status: "created" | "skipped"; company_id?: number; batch_id?: number; error?: string; warning?: string }[] = [];
+  const warnings: string[] = [];
+
+  // Where scraped companies start comes from the scraper rule in Settings. If it points at something switched off (or is missing)
+  // the import carries on with the database default, so a settings mistake never loses data.
+  const startAt = scraperRule?.target_active ? { pipeline_status_id: Number(scraperRule.status_id), pipeline_stage_id: Number(scraperRule.stage_id) } : {};
+  if (hotels.length > 0 && !scraperRule?.target_active) {
+    warnings.push("The scraper's start status / stage in Settings is switched off or missing; companies were given the default start instead.");
+  }
+  // The default property type is used only when a record sends none, or one that isn't on the list.
+  const defaultPropertyType = scraperRule?.property_type && validPropertyTypes.includes(scraperRule.property_type) ? scraperRule.property_type : null;
+  if (hotels.length > 0 && scraperRule?.property_type && !defaultPropertyType) {
+    warnings.push(`The scraper's default property type "${scraperRule.property_type}" is no longer on the Property Type list and was ignored.`);
+  }
+  let unrecognisedTypes = 0;
 
   // First request with a campaign_id creates the batch; later ones attach to it. The first
   // request defines the details -- they are never overwritten afterwards.
@@ -221,8 +237,14 @@ async function handlePost(request: Request): Promise<Handled> {
     }
 
     const companyType = matchEnum(h.gs_company_type, validCompanyTypes, "Property")!;
-    const propertyType = matchEnum(h.gs_property_type, validPropertyTypes, null);
-    const leadStatus = matchEnum(h.hs_lead_status, validLeadStatuses, "New")!;
+    const sentType = clean(h.gs_property_type);
+    const matchedType = matchEnum(sentType ?? undefined, validPropertyTypes, null);
+    const propertyType = matchedType ?? defaultPropertyType;
+    let warning: string | undefined;
+    if (sentType && !matchedType) {
+      unrecognisedTypes++;
+      warning = `property type not recognised: ${sentType}${defaultPropertyType ? `, used the default (${defaultPropertyType})` : ""}`;
+    }
     const rating = h.google_rating !== undefined && h.google_rating !== "" ? parseFloat(String(h.google_rating)) : null;
     const reviewCount =
       h.google_review_count !== undefined && h.google_review_count !== ""
@@ -242,8 +264,10 @@ async function handlePost(request: Request): Promise<Handled> {
         zip: h.zip || null,
         country: matchCountry(h.country, validCountries) ?? (h.country?.trim() || null),
         company_type: companyType,
+        // Old fields stay "Lead" / "New": the research agent and Review Queue still find pending companies through them.
         lifecycle_stage: "Lead",
-        lead_status: leadStatus,
+        lead_status: "New",
+        ...startAt,
         source: h.source?.trim() || "google_maps",
         import_batch_id: batchId,
       })
@@ -274,7 +298,7 @@ async function handlePost(request: Request): Promise<Handled> {
       });
     }
 
-    results.push({ index, status: "created", company_id: companyId, ...(batchId ? { batch_id: batchId } : {}) });
+    results.push({ index, status: "created", company_id: companyId, ...(batchId ? { batch_id: batchId } : {}), ...(warning ? { warning } : {}) });
   }
 
   // The scraper flags a campaign's last push (campaign_complete) to close it -- on the request, or on
@@ -286,7 +310,9 @@ async function handlePost(request: Request): Promise<Handled> {
     const own = parseBatch(h as Record<string, unknown>);
     if (own && typeof own !== "string" && own.complete) completions.set(own.campaign_id, own);
   }
-  const warnings: string[] = [];
+  if (unrecognisedTypes > 0) {
+    warnings.push(`${unrecognisedTypes} record(s) sent a property type that isn't on the Property Type list (see each result's warning).`);
+  }
   for (const spec of completions.values()) {
     try {
       const id = await ensureBatch(spec);

@@ -5,13 +5,26 @@ import { useRouter } from "next/navigation";
 import type { PipelineStatus } from "@/lib/pipeline-format";
 import type { EnrollmentRule } from "@/lib/campaign-rule-format";
 import { CampaignRuleBlock } from "./campaign-rule-block";
+import { ScraperRuleBlock, type ScraperRule } from "./scraper-rule-block";
 
 export type VerifiedRule = { status_id: string; stage_id: string; is_enabled: boolean };
 
 const select = "rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-100 disabled:opacity-50";
 
 // The one pipeline rule so far: what happens to a company when it is verified.
-export function RulesSettings({ statuses, rule, enrollmentRule }: { statuses: PipelineStatus[]; rule: VerifiedRule; enrollmentRule: EnrollmentRule }) {
+export function RulesSettings({
+  statuses,
+  rule,
+  enrollmentRule,
+  scraperRule,
+  propertyTypes,
+}: {
+  statuses: PipelineStatus[];
+  rule: VerifiedRule;
+  enrollmentRule: EnrollmentRule;
+  scraperRule: (ScraperRule & { target_active: boolean }) | null;
+  propertyTypes: string[];
+}) {
   const router = useRouter();
   const [statusId, setStatusId] = useState(rule.status_id);
   const [stageId, setStageId] = useState(rule.stage_id);
@@ -114,6 +127,8 @@ export function RulesSettings({ statuses, rule, enrollmentRule }: { statuses: Pi
       {error && <p className="text-sm text-red-600">{error}</p>}
 
       <CampaignRuleBlock statuses={statuses} rule={enrollmentRule} />
+
+      {scraperRule && <ScraperRuleBlock statuses={statuses} rule={scraperRule} propertyTypes={propertyTypes} />}
     </section>
   );
 }

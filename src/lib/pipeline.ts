@@ -130,3 +130,16 @@ export async function fetchVerifiedRule(): Promise<{ status_id: string; stage_id
   );
   return row ?? null;
 }
+
+// The scraper rule: where companies created by the scraper start, plus an optional default property type. `target_active` is
+// false when the chosen status / stage has been switched off since (the import then falls back to the normal default).
+export async function fetchScraperRule(): Promise<{ status_id: string; stage_id: string; property_type: string | null; target_active: boolean } | null> {
+  const [row] = await query<{ status_id: string; stage_id: string; property_type: string | null; target_active: boolean }>(
+    `SELECT r.status_id::text, r.stage_id::text, r.property_type, (s.is_active AND g.is_active) AS target_active
+       FROM pipeline_rules r
+       JOIN pipeline_statuses s ON s.id = r.status_id
+       JOIN pipeline_stages g ON g.id = r.stage_id
+      WHERE r.rule_key = 'on_scraped'`
+  );
+  return row ?? null;
+}
