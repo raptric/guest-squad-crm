@@ -39,7 +39,7 @@ import { getPicklistValues } from "@/lib/picklists";
 import { getCurrentUser } from "@/lib/current-user";
 import { canViewCompany } from "@/lib/visibility";
 import { assignableUsers, canAssign } from "@/lib/assignment";
-import { fetchActiveCampaigns, fetchCompanyEnrollments } from "@/lib/campaigns";
+import { fetchOpenCampaigns, fetchCompanyEnrollments, fetchPlaybooks } from "@/lib/campaigns";
 import { todayUtc } from "@/lib/campaigns-format";
 import { CampaignCard } from "./campaign-card";
 import { PipelineEditor } from "./pipeline-editor";
@@ -210,7 +210,8 @@ export default async function CompanyDetailPage({
   });
   const ready = eligibility.ok;
   const mayEnroll = ready && isOwner;
-  const [enrollments, campaigns] = await Promise.all([fetchCompanyEnrollments(companyId), mayEnroll ? fetchActiveCampaigns() : Promise.resolve([])]);
+  const [enrollments, campaigns] = await Promise.all([fetchCompanyEnrollments(companyId), mayEnroll && actor ? fetchOpenCampaigns(actor) : Promise.resolve([])]);
+  const playbooks = await fetchPlaybooks(enrollments.map((e) => e.campaign_id));
   const canActOnTasks =
     !!actor &&
     (actor.role === "super_admin" ||
@@ -563,6 +564,7 @@ export default async function CompanyDetailPage({
                 enrollNote={enrollNote}
                 canAct={canActOnTasks}
                 enrollments={enrollments}
+                playbooks={playbooks}
                 campaigns={campaigns}
                 recipients={contacts.map((c) => {
                   const email = forThisCompany(c.contact_emails)[0]?.email;

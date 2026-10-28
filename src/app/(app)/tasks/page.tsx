@@ -1,11 +1,12 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/current-user";
-import { fetchCampaignList, fetchTasks, fetchTaskSummary, type TaskScope, type TaskTab } from "@/lib/campaigns";
+import { fetchCampaignList, fetchPlaybooks, fetchTasks, fetchTaskSummary, type TaskScope, type TaskTab } from "@/lib/campaigns";
 import { CHANNEL_CHIP, DUE_TONE, dueInfo, formatDate, todayUtc } from "@/lib/campaigns-format";
 import { timeAgo } from "@/lib/time-ago";
 import { TaskActions } from "./task-actions";
 import { CampaignFilter } from "./campaign-filter";
+import { PlaybookPanel } from "../campaigns/playbook-panel";
 
 export const dynamic = "force-dynamic";
 
@@ -13,9 +14,10 @@ const TABS: { key: TaskTab; label: string }[] = [
   { key: "overdue", label: "Overdue" },
   { key: "today", label: "Today" },
   { key: "upcoming", label: "Upcoming" },
+  { key: "paused", label: "Paused" },
   { key: "done", label: "Done" },
 ];
-const TAB_TONE: Record<TaskTab, string> = { overdue: "bg-red-100 text-red-800", today: "bg-amber-100 text-amber-800", upcoming: "bg-sky-100 text-sky-800", done: "bg-zinc-100 text-zinc-600" };
+const TAB_TONE: Record<TaskTab, string> = { overdue: "bg-red-100 text-red-800", today: "bg-amber-100 text-amber-800", upcoming: "bg-sky-100 text-sky-800", paused: "bg-amber-100 text-amber-800", done: "bg-zinc-100 text-zinc-600" };
 
 type Raw = Record<string, string | string[] | undefined>;
 const one = (raw: Raw, key: string) => {
@@ -40,11 +42,13 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
   const explicitTab = TABS.find((t) => t.key === one(raw, "tab"))?.key ?? null;
   const today = todayUtc();
 
-  const [campaigns, summary] = await Promise.all([fetchCampaignList(), manager ? fetchTaskSummary(actor) : Promise.resolve([])]);
+  const [campaigns, summary] = await Promise.all([fetchCampaignList(actor), manager ? fetchTaskSummary(actor) : Promise.resolve([])]);
   const first = await fetchTasks({ actor, scope, tab: explicitTab ?? "today", userId, campaignId });
   // Opening the page with no tab chosen: show what's most urgent.
   const tab: TaskTab = explicitTab ?? (first.counts.overdue > 0 ? "overdue" : "today");
   const { rows, counts } = tab === (explicitTab ?? "today") ? first : await fetchTasks({ actor, scope, tab, userId, campaignId });
+
+  const playbooks = await fetchPlaybooks(rows.map((r) => r.campaign_id));
 
   const qs = (over: Record<string, string | undefined>) => {
     const p = new URLSearchParams();
@@ -132,7 +136,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
       {rows.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-zinc-300 bg-white px-6 py-14 text-center">
           <p className="font-medium text-zinc-800">
-            {tab === "done" ? "Nothing completed yet" : tab === "overdue" ? "Nothing overdue. Nice." : tab === "today" ? "Nothing due today" : "Nothing coming up"}
+            {tab === "done" ? "Nothing completed yet" : tab === "paused" ? "Nothing on hold" : tab === "overdue" ? "Nothing overdue. Nice." : tab === "today" ? "Nothing due today" : "Nothing coming up"}
           </p>
           <p className="mt-1 text-sm text-zinc-500">Tasks appear here when a company you own is enrolled in a campaign.</p>
         </div>
@@ -146,7 +150,9 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
                 <div className="flex flex-wrap items-start justify-between gap-4">
                   <div className="min-w-0 flex-1 space-y-2">
                     <div className="flex flex-wrap items-center gap-2 text-xs">
-                      {t.status === "pending" ? (
+                      {t.status === "pending" && t.campaign_status === "paused" ? (
+                        <span className="rounded-full bg-amber-100 px-2.5 py-1 font-medium text-amber-800">Paused</span>
+                      ) : t.status === "pending" ? (
                         <span className={`rounded-full px-2.5 py-1 font-medium ${DUE_TONE[due.tone]}`}>{due.text}</span>
                       ) : (
                         <span className={`rounded-full px-2.5 py-1 font-medium ${t.status === "done" ? "bg-emerald-100 text-emerald-800" : "bg-zinc-200 text-zinc-600"}`}>
@@ -179,6 +185,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
                         <p className="mt-1 whitespace-pre-wrap rounded-lg bg-zinc-50 p-3 leading-relaxed">{t.step_instructions}</p>
                       </details>
                     )}
+                    <PlaybookPanel playbook={playbooks[t.campaign_id]} />
                     {t.status !== "pending" && (
                       <p className="text-xs text-zinc-500">
                         {t.status === "done" ? "Done" : "Skipped"} by {t.completed_by_name ?? "someone"} {t.completed_at ? timeAgo(t.completed_at) : ""}
@@ -186,7 +193,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
                       </p>
                     )}
                   </div>
-                  <TaskActions taskId={t.id} status={t.status} canAct={mayAct && t.enrollment_status !== "stopped"} />
+                  <TaskActions taskId={t.id} status={t.status} canAct={mayAct && t.enrollment_status !== "stopped" && t.campaign_status !== "paused"} />
                 </div>
               </li>
             );

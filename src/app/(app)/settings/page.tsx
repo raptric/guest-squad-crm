@@ -25,6 +25,8 @@ const FIELDS: { title: string; fieldName: string }[] = [
   { title: "Hiring Signal Role", fieldName: "hiring_signal_role" },
   { title: "Signal Strength", fieldName: "strength" },
   { title: "Offer Service", fieldName: "offer_service" },
+  { title: "Campaign Outreach Angle", fieldName: "outreach_angle" },
+  { title: "Campaign Key Differentiator", fieldName: "key_differentiator" },
   { title: "Contact Role", fieldName: "contact_role" },
   { title: "Decision Maker Level", fieldName: "decision_maker_level" },
   { title: "Contact Line Type", fieldName: "contact_line_type" },

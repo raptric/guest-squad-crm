@@ -1,20 +1,50 @@
 import { query } from "@/lib/db";
 import { leadScopeSql, type Actor } from "@/lib/assignment";
-import { CHANNELS } from "@/lib/campaigns-format";
+import { visibleSql } from "@/lib/visibility";
+import { CHANNELS, type Visibility } from "@/lib/campaigns-format";
 
 // Campaigns, phase 1: manual steps and tasks. "Today" is the UTC calendar date for now (per-user time zones come later).
 export const READY_FOR_OUTREACH = "Ready for Outreach";
 export const TODAY_SQL = "(now() AT TIME ZONE 'UTC')::date";
 
 export type StepInput = { day_number: number; channel: string; title: string; instructions: string };
-export type CampaignInput = { name: string; description: string; steps: StepInput[] };
+export type ObjectionInput = { objection: string; response: string };
+export type CampaignInput = {
+  name: string;
+  description: string;
+  steps: StepInput[];
+  visibility: Visibility;
+  team_id: number | null; // admins pick the team for a Team campaign
+  owner_id: number | null; // admins can hand a campaign to someone else
+  status: "draft" | "active"; // only used when creating
+  outreach_angle: string | null;
+  pain_point: string;
+  secondary_pains: string[];
+  positioning: string;
+  differentiators: string[];
+  objections: ObjectionInput[];
+};
 
+const text = (v: unknown, max: number, label: string): { value: string } | { error: string } => {
+  const s = typeof v === "string" ? v.trim() : "";
+  if (s.length > max) return { error: `${label} must be ${max.toLocaleString()} characters or fewer.` };
+  return { value: s };
+};
+const strings = (v: unknown, max: number) =>
+  Array.isArray(v) ? [...new Set(v.filter((x): x is string => typeof x === "string").map((x) => x.trim()).filter(Boolean))].slice(0, max) : [];
+
+// Shape and length checks only; who may do what, and the Settings lists, are checked in resolveCampaignInput.
 export function parseCampaignInput(body: unknown): { value: CampaignInput } | { error: string } {
-  const { name, description, steps } = (body ?? {}) as Record<string, unknown>;
+  const b = (body ?? {}) as Record<string, unknown>;
+  const { name, steps } = b;
   if (typeof name !== "string" || !name.trim()) return { error: "Give the campaign a name." };
   if (name.trim().length > 120) return { error: "The campaign name must be 120 characters or fewer." };
-  const desc = typeof description === "string" ? description.trim() : "";
-  if (desc.length > 8000) return { error: "The description must be 8,000 characters or fewer." };
+  const desc = text(b.description, 8000, "The description");
+  if ("error" in desc) return desc;
+  const pain = text(b.pain_point, 400, "The primary pain point");
+  if ("error" in pain) return pain;
+  const positioning = text(b.positioning, 400, "The positioning statement");
+  if ("error" in positioning) return positioning;
   if (!Array.isArray(steps) || steps.length === 0) return { error: "Add at least one step." };
   if (steps.length > 40) return { error: "A campaign can have at most 40 steps." };
 
@@ -34,42 +64,255 @@ export function parseCampaignInput(body: unknown): { value: CampaignInput } | { 
   }
   // Ordered by day (the order they were entered breaks ties).
   const ordered = parsed.map((s, i) => ({ s, i })).sort((a, b) => a.s.day_number - b.s.day_number || a.i - b.i).map((x) => x.s);
-  return { value: { name: name.trim(), description: desc, steps: ordered } };
+
+  const rawObjections = Array.isArray(b.objections) ? b.objections : [];
+  const objections: ObjectionInput[] = [];
+  for (const o of rawObjections) {
+    const r = (o ?? {}) as Record<string, unknown>;
+    const objection = typeof r.objection === "string" ? r.objection.trim() : "";
+    const response = typeof r.response === "string" ? r.response.trim() : "";
+    if (!objection && !response) continue;
+    if (!objection) return { error: "Each response needs the objection it answers." };
+    if (objection.length > 200) return { error: "An objection must be 200 characters or fewer." };
+    if (response.length > 600) return { error: "A response must be 600 characters or fewer." };
+    objections.push({ objection, response });
+  }
+  if (objections.length > 10) return { error: "A campaign can have at most 10 objections." };
+
+  const visibility = b.visibility === "team" || b.visibility === "public" ? b.visibility : "private";
+  const angle = typeof b.outreach_angle === "string" && b.outreach_angle.trim() ? b.outreach_angle.trim() : null;
+  const teamId = Number(b.team_id);
+  const ownerId = Number(b.owner_id);
+  return {
+    value: {
+      name: name.trim(),
+      description: desc.value,
+      steps: ordered,
+      visibility,
+      team_id: Number.isInteger(teamId) && teamId > 0 ? teamId : null,
+      owner_id: Number.isInteger(ownerId) && ownerId > 0 ? ownerId : null,
+      status: b.status === "active" ? "active" : "draft",
+      outreach_angle: angle,
+      pain_point: pain.value,
+      secondary_pains: strings(b.secondary_pains, 8).filter((p) => p !== angle),
+      positioning: positioning.value,
+      differentiators: strings(b.differentiators, 12),
+      objections,
+    },
+  };
 }
+
+// A campaign needs a playbook before it can go live.
+export const activationError = (c: { outreach_angle: string | null; pain_point: string }) =>
+  !c.outreach_angle ? "Choose the primary outreach angle before activating." : !c.pain_point.trim() ? "Write the primary pain point before activating." : null;
+
+export type ResolvedCampaign = { visibility: Visibility; team_id: number | null; owner_id: number | null };
+
+// Who may share with whom, who owns it, and that the angle / differentiators come from the Settings lists
+// (a value that was already saved and has since been switched off is still accepted).
+export async function resolveCampaignInput(
+  actor: Actor,
+  input: CampaignInput,
+  existing?: { visibility: string; team_id: string | null; owner_id: string | null; outreach_angle: string | null; secondary_pains: string[]; differentiators: string[] }
+): Promise<{ value: ResolvedCampaign } | { error: string }> {
+  const isAdmin = actor.role === "super_admin";
+
+  let teamId: number | null = null;
+  if (input.visibility === "team") {
+    if (isAdmin) {
+      if (!input.team_id) return { error: "Choose which team can see this campaign." };
+      const [team] = await query<{ id: string }>("SELECT id FROM teams WHERE id = $1", [input.team_id]);
+      if (!team) return { error: "That team doesn't exist." };
+      teamId = input.team_id;
+    } else if (existing?.visibility === "team" && existing.team_id) {
+      teamId = Number(existing.team_id);
+    } else if (actor.team_id !== null && actor.team_id !== undefined) {
+      teamId = Number(actor.team_id);
+    } else {
+      return { error: "You aren't in a team yet, so you can't share a campaign with one." };
+    }
+  }
+
+  let ownerId: number | null = existing?.owner_id ? Number(existing.owner_id) : Number(actor.id);
+  if (isAdmin && input.owner_id) {
+    const [owner] = await query<{ id: string }>("SELECT id FROM users WHERE id = $1", [input.owner_id]);
+    if (!owner) return { error: "That owner doesn't exist." };
+    ownerId = input.owner_id;
+  }
+
+  const lists = await query<{ field_name: string; value: string }>(
+    "SELECT field_name, value FROM picklist_values WHERE is_active AND field_name IN ('outreach_angle', 'key_differentiator')"
+  );
+  const angles = new Set(lists.filter((l) => l.field_name === "outreach_angle").map((l) => l.value));
+  const diffs = new Set(lists.filter((l) => l.field_name === "key_differentiator").map((l) => l.value));
+  (existing?.outreach_angle ? [existing.outreach_angle] : []).forEach((a) => angles.add(a));
+  (existing?.secondary_pains ?? []).forEach((a) => angles.add(a));
+  (existing?.differentiators ?? []).forEach((d) => diffs.add(d));
+  if (input.outreach_angle && !angles.has(input.outreach_angle)) return { error: "That outreach angle isn't in the list." };
+  if (input.secondary_pains.some((p) => !angles.has(p))) return { error: "A secondary pain point isn't in the list." };
+  if (input.differentiators.some((d) => !diffs.has(d))) return { error: "A key differentiator isn't in the list." };
+
+  return { value: { visibility: input.visibility, team_id: teamId, owner_id: ownerId } };
+}
+
+// ---------------- who sees / manages a campaign ----------------
+// Admin: all. Everyone else: their own, Public ones, their team's Team ones, and any campaign one of their
+// companies is enrolled in (so running work never loses its campaign).
+export function campaignVisibleSql(actor: Actor | null | undefined, alias: string, add: (v: unknown) => string): string {
+  if (!actor) return "false";
+  if (actor.role === "super_admin") return "true";
+  const parts = [`${alias}.owner_id = ${add(actor.id)}::bigint`, `${alias}.visibility = 'public'`];
+  if (actor.team_id !== null && actor.team_id !== undefined) parts.push(`(${alias}.visibility = 'team' AND ${alias}.team_id = ${add(actor.team_id)}::bigint)`);
+  parts.push(
+    `EXISTS (SELECT 1 FROM campaign_enrollments ve JOIN companies vc ON vc.id = ve.company_id AND vc.deleted_at IS NULL
+              WHERE ve.campaign_id = ${alias}.id AND vc.owner_id = ${add(actor.id)}::bigint)`
+  );
+  return `(${parts.join(" OR ")})`;
+}
+
+export const canManageCampaign = (actor: Actor | null | undefined, ownerId: string | number | null) =>
+  !!actor && (actor.role === "super_admin" || (ownerId !== null && String(ownerId) === String(actor.id)));
 
 // ---------------- campaigns ----------------
-export type CampaignRow = { id: string; name: string; description: string; status: string; step_count: number; active_enrollments: number; created_at: Date };
+export type CampaignRow = {
+  id: string;
+  code: string;
+  name: string;
+  description: string;
+  status: string;
+  visibility: Visibility;
+  team_name: string | null;
+  owner_id: string | null;
+  owner_name: string | null;
+  step_count: number;
+  active_enrollments: number;
+  created_at: Date;
+  can_manage: boolean;
+};
 
-export const fetchCampaignList = () =>
-  query<CampaignRow>(
-    `SELECT k.id, k.name, k.description, k.status, k.created_at,
+export async function fetchCampaignList(actor: Actor): Promise<CampaignRow[]> {
+  const params: unknown[] = [];
+  const add = (v: unknown) => {
+    params.push(v);
+    return `$${params.length}`;
+  };
+  const rows = await query<Omit<CampaignRow, "can_manage">>(
+    `SELECT k.id, k.code, k.name, k.description, k.status, k.visibility, k.created_at, k.owner_id, ou.name AS owner_name, t.name AS team_name,
             (SELECT count(*)::int FROM campaign_steps s WHERE s.campaign_id = k.id) AS step_count,
-            (SELECT count(*)::int FROM campaign_enrollments e WHERE e.campaign_id = k.id AND e.status = 'active') AS active_enrollments
-       FROM campaigns k ORDER BY (k.status = 'active') DESC, lower(k.name)`
+            (SELECT count(*)::int FROM campaign_enrollments e JOIN companies c ON c.id = e.company_id AND c.deleted_at IS NULL
+              WHERE e.campaign_id = k.id AND e.status = 'active' AND ${visibleSql(actor, "c", add)}) AS active_enrollments
+       FROM campaigns k
+       LEFT JOIN users ou ON ou.id = k.owner_id
+       LEFT JOIN teams t ON t.id = k.team_id
+      WHERE ${campaignVisibleSql(actor, "k", add)}
+      ORDER BY (k.status = 'active') DESC, (k.status = 'paused') DESC, (k.status = 'draft') DESC, k.created_at DESC`,
+    params
   );
-
-export type CampaignStep = { id?: string; day_number: number; channel: string; title: string; instructions: string };
-export type CampaignWithSteps = { id: string; name: string; description: string; status: string; steps: CampaignStep[] };
-
-export async function fetchCampaign(id: string): Promise<CampaignWithSteps | null> {
-  const [campaign] = await query<Omit<CampaignWithSteps, "steps">>("SELECT id, name, description, status FROM campaigns WHERE id = $1", [id]);
-  if (!campaign) return null;
-  const steps = await query<CampaignStep>(
-    "SELECT id, day_number, channel, title, instructions FROM campaign_steps WHERE campaign_id = $1 ORDER BY position",
-    [id]
-  );
-  return { ...campaign, steps };
+  return rows.map((r) => ({ ...r, can_manage: canManageCampaign(actor, r.owner_id) }));
 }
 
-// Active campaigns with their steps, for the Enroll dialog.
-export async function fetchActiveCampaigns(): Promise<CampaignWithSteps[]> {
-  const rows = await query<Omit<CampaignWithSteps, "steps"> & { steps: CampaignStep[] }>(
-    `SELECT k.id, k.name, k.description, k.status,
+export type CampaignStep = { id?: string; day_number: number; channel: string; title: string; instructions: string };
+export type Playbook = {
+  outreach_angle: string | null;
+  pain_point: string;
+  secondary_pains: string[];
+  positioning: string;
+  differentiators: string[];
+  objections: ObjectionInput[];
+};
+export type CampaignWithSteps = {
+  id: string;
+  code: string;
+  name: string;
+  description: string;
+  status: string;
+  visibility: Visibility;
+  team_id: string | null;
+  team_name: string | null;
+  owner_id: string | null;
+  owner_name: string | null;
+  copied_from: string | null;
+  copied_from_code: string | null;
+  steps: CampaignStep[];
+  playbook: Playbook;
+  can_manage: boolean;
+  running: number; // running enrollments (all of them, for the completed banner)
+};
+
+export async function fetchCampaign(id: string, actor: Actor): Promise<CampaignWithSteps | null> {
+  const params: unknown[] = [id];
+  const add = (v: unknown) => {
+    params.push(v);
+    return `$${params.length}`;
+  };
+  const [row] = await query<Omit<CampaignWithSteps, "steps" | "playbook" | "can_manage"> & Playbook>(
+    `SELECT k.id, k.code, k.name, k.description, k.status, k.visibility, k.team_id, t.name AS team_name, k.owner_id, ou.name AS owner_name,
+            k.copied_from, src.code AS copied_from_code,
+            k.outreach_angle, k.pain_point, k.secondary_pains, k.positioning, k.differentiators,
+            (SELECT count(*)::int FROM campaign_enrollments e WHERE e.campaign_id = k.id AND e.status = 'active') AS running
+       FROM campaigns k
+       LEFT JOIN users ou ON ou.id = k.owner_id
+       LEFT JOIN teams t ON t.id = k.team_id
+       LEFT JOIN campaigns src ON src.id = k.copied_from
+      WHERE k.id = $1 AND ${campaignVisibleSql(actor, "k", add)}`,
+    params
+  );
+  if (!row) return null;
+  const [steps, objections] = await Promise.all([
+    query<CampaignStep>("SELECT id, day_number, channel, title, instructions FROM campaign_steps WHERE campaign_id = $1 ORDER BY position", [id]),
+    query<ObjectionInput>("SELECT objection, response FROM campaign_objections WHERE campaign_id = $1 ORDER BY position", [id]),
+  ]);
+  const { outreach_angle, pain_point, secondary_pains, positioning, differentiators, ...rest } = row;
+  return {
+    ...rest,
+    steps,
+    playbook: { outreach_angle, pain_point, secondary_pains, positioning, differentiators, objections },
+    can_manage: canManageCampaign(actor, row.owner_id),
+  };
+}
+
+// Campaigns open for enrollment (visible to this person and Active), with their steps, for the Enroll dialog.
+export async function fetchOpenCampaigns(actor: Actor) {
+  const params: unknown[] = [];
+  const add = (v: unknown) => {
+    params.push(v);
+    return `$${params.length}`;
+  };
+  return query<{ id: string; code: string; name: string; description: string; status: string; steps: CampaignStep[] }>(
+    `SELECT k.id, k.code, k.name, k.description, k.status,
             coalesce((SELECT json_agg(json_build_object('day_number', s.day_number, 'channel', s.channel, 'title', s.title, 'instructions', s.instructions) ORDER BY s.position)
                         FROM campaign_steps s WHERE s.campaign_id = k.id), '[]'::json) AS steps
-       FROM campaigns k WHERE k.status = 'active' ORDER BY lower(k.name)`
+       FROM campaigns k WHERE k.status = 'active' AND ${campaignVisibleSql(actor, "k", add)} ORDER BY lower(k.name)`,
+    params
   );
-  return rows;
+}
+
+// The playbooks of these campaigns, for the task list and the company page (people working a task see the latest text).
+export async function fetchPlaybooks(ids: string[]): Promise<Record<string, Playbook>> {
+  const unique = [...new Set(ids)];
+  if (!unique.length) return {};
+  const [rows, objections] = await Promise.all([
+    query<Playbook & { id: string }>(
+      "SELECT id, outreach_angle, pain_point, secondary_pains, positioning, differentiators FROM campaigns WHERE id = ANY($1::bigint[])",
+      [unique]
+    ),
+    query<ObjectionInput & { campaign_id: string }>(
+      "SELECT campaign_id, objection, response FROM campaign_objections WHERE campaign_id = ANY($1::bigint[]) ORDER BY campaign_id, position",
+      [unique]
+    ),
+  ]);
+  const out: Record<string, Playbook> = {};
+  for (const r of rows) {
+    out[r.id] = {
+      outreach_angle: r.outreach_angle,
+      pain_point: r.pain_point,
+      secondary_pains: r.secondary_pains,
+      positioning: r.positioning,
+      differentiators: r.differentiators,
+      objections: objections.filter((o) => o.campaign_id === r.id).map(({ objection, response }) => ({ objection, response })),
+    };
+  }
+  return out;
 }
 
 // ---------------- a company's enrollments ----------------
@@ -91,6 +334,7 @@ export type EnrollmentRow = {
   id: string;
   campaign_id: string;
   campaign_name: string;
+  campaign_status: string;
   recipient_type: "contact" | "company";
   contact_id: string | null;
   recipient_label: string;
@@ -104,7 +348,7 @@ export type EnrollmentRow = {
 
 export async function fetchCompanyEnrollments(companyId: number): Promise<EnrollmentRow[]> {
   const enrollments = await query<Omit<EnrollmentRow, "tasks">>(
-    `SELECT e.id, e.campaign_id, k.name AS campaign_name, e.recipient_type, e.contact_id, e.recipient_label,
+    `SELECT e.id, e.campaign_id, k.name AS campaign_name, k.status AS campaign_status, e.recipient_type, e.contact_id, e.recipient_label,
             to_char(e.start_date, 'YYYY-MM-DD') AS start_date, e.status, e.stop_note,
             su.name AS stopped_by_name, eu.name AS enrolled_by_name
        FROM campaign_enrollments e
@@ -127,13 +371,14 @@ export async function fetchCompanyEnrollments(companyId: number): Promise<Enroll
 }
 
 // ---------------- the My tasks list ----------------
-export type TaskTab = "overdue" | "today" | "upcoming" | "done";
+export type TaskTab = "overdue" | "today" | "upcoming" | "paused" | "done";
 export type TaskScope = "mine" | "team" | "all";
 export type ListTask = TaskRow & {
   enrollment_status: string;
   recipient_label: string;
   campaign_id: string;
   campaign_name: string;
+  campaign_status: string;
   company_id: string;
   company_name: string;
   owner_id: string | null;
@@ -149,9 +394,11 @@ const TASK_FROM = `
   LEFT JOIN users cu ON cu.id = t.completed_by`;
 
 const TAB_SQL: Record<TaskTab, string> = {
-  overdue: `t.status = 'pending' AND e.status = 'active' AND t.due_date < ${TODAY_SQL}`,
-  today: `t.status = 'pending' AND e.status = 'active' AND t.due_date = ${TODAY_SQL}`,
-  upcoming: `t.status = 'pending' AND e.status = 'active' AND t.due_date > ${TODAY_SQL}`,
+  // A paused campaign's tasks are held: they show under Paused and never count as due or overdue.
+  overdue: `t.status = 'pending' AND e.status = 'active' AND k.status <> 'paused' AND t.due_date < ${TODAY_SQL}`,
+  today: `t.status = 'pending' AND e.status = 'active' AND k.status <> 'paused' AND t.due_date = ${TODAY_SQL}`,
+  upcoming: `t.status = 'pending' AND e.status = 'active' AND k.status <> 'paused' AND t.due_date > ${TODAY_SQL}`,
+  paused: `t.status = 'pending' AND e.status = 'active' AND k.status = 'paused'`,
   done: `t.status IN ('done', 'skipped')`,
 };
 
@@ -192,7 +439,7 @@ export async function fetchTasks(args: {
     query<ListTask>(
       `SELECT t.id, t.enrollment_id, t.step_position, t.step_day, t.step_channel, t.step_title, t.step_instructions,
               to_char(t.due_date, 'YYYY-MM-DD') AS due_date, t.status, t.completed_at, cu.name AS completed_by_name, t.notes,
-              e.status AS enrollment_status, e.recipient_label, k.id AS campaign_id, k.name AS campaign_name,
+              e.status AS enrollment_status, e.recipient_label, k.id AS campaign_id, k.name AS campaign_name, k.status AS campaign_status,
               c.id AS company_id, c.name AS company_name, c.owner_id, o.name AS owner_name
          ${TASK_FROM} WHERE ${where} ORDER BY ${order} LIMIT 200`,
       params
@@ -208,7 +455,7 @@ export async function fetchTasks(args: {
       return query<{ tab: TaskTab; n: number }>(
         `SELECT tab, count(*)::int AS n FROM (
            SELECT CASE WHEN ${TAB_SQL.overdue} THEN 'overdue' WHEN ${TAB_SQL.today} THEN 'today'
-                       WHEN ${TAB_SQL.upcoming} THEN 'upcoming' WHEN ${TAB_SQL.done} THEN 'done' END AS tab
+                       WHEN ${TAB_SQL.upcoming} THEN 'upcoming' WHEN ${TAB_SQL.paused} THEN 'paused' WHEN ${TAB_SQL.done} THEN 'done' END AS tab
              ${TASK_FROM} WHERE true${scope}${campaign}
          ) x WHERE tab IS NOT NULL GROUP BY tab`,
         p
@@ -216,7 +463,7 @@ export async function fetchTasks(args: {
     })(),
   ]);
   const count = (tab: TaskTab) => counts.find((c) => c.tab === tab)?.n ?? 0;
-  return { rows, counts: { overdue: count("overdue"), today: count("today"), upcoming: count("upcoming"), done: count("done") } };
+  return { rows, counts: { overdue: count("overdue"), today: count("today"), upcoming: count("upcoming"), paused: count("paused"), done: count("done") } };
 }
 
 export type SummaryRow = { id: string; name: string; team_name: string | null; due_today: number; overdue: number; done_week: number };
@@ -226,6 +473,7 @@ export async function fetchTaskSummary(actor: Actor): Promise<SummaryRow[]> {
   const isAdmin = actor.role === "super_admin";
   const owned = (extra: string) =>
     `(SELECT count(*)::int FROM campaign_tasks ct JOIN campaign_enrollments e ON e.id = ct.enrollment_id AND e.status = 'active'
+        JOIN campaigns kk ON kk.id = e.campaign_id AND kk.status <> 'paused'
         JOIN companies c ON c.id = e.company_id AND c.deleted_at IS NULL
        WHERE c.owner_id = u.id AND ct.status = 'pending' AND ${extra})`;
   const rows = await query<SummaryRow>(
@@ -248,6 +496,7 @@ export async function fetchTaskBadge(userId: number | string): Promise<number> {
   const [r] = await query<{ n: number }>(
     `SELECT count(*)::int AS n FROM campaign_tasks ct
        JOIN campaign_enrollments e ON e.id = ct.enrollment_id AND e.status = 'active'
+       JOIN campaigns kk ON kk.id = e.campaign_id AND kk.status <> 'paused'
        JOIN companies c ON c.id = e.company_id AND c.deleted_at IS NULL
       WHERE c.owner_id = $1 AND ct.status = 'pending' AND ct.due_date <= ${TODAY_SQL}`,
     [userId]
@@ -266,6 +515,7 @@ export type TaskForAction = {
   enrollment_id: string;
   enrollment_status: string;
   campaign_name: string;
+  campaign_status: string;
   recipient_label: string;
   company_id: string;
   company_name: string;
@@ -287,7 +537,7 @@ export async function getTaskForAction(actor: Actor, taskId: number): Promise<Ta
   const params: unknown[] = [taskId];
   const [row] = await query<TaskForAction>(
     `SELECT t.id, t.status, t.step_title, t.step_day, t.step_channel, t.enrollment_id, e.status AS enrollment_status,
-            k.name AS campaign_name, e.recipient_label, c.id AS company_id, c.name AS company_name,
+            k.name AS campaign_name, k.status AS campaign_status, e.recipient_label, c.id AS company_id, c.name AS company_name,
             ${accessSql(actor, params)} AS allowed
        FROM campaign_tasks t
        JOIN campaign_enrollments e ON e.id = t.enrollment_id

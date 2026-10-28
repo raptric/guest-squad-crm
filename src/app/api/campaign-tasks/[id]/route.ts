@@ -27,6 +27,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const task = await getTaskForAction(actor, Number(id));
   if (!task) return fail("Task not found", 404);
   if (!task.allowed) return fail("This task belongs to someone else.", 403);
+  if (task.campaign_status === "paused") return fail("This campaign is paused. You can work on its tasks again when it resumes.");
 
   if (action === "reopen") {
     if (task.status !== "done" && task.status !== "skipped") return fail("Only a completed or skipped task can be reopened.");

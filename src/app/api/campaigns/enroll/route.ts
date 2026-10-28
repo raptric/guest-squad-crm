@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/current-user";
 import { query, withTransaction, isUniqueViolation } from "@/lib/db";
 import { checkEnrollable, fetchEnrollmentRule } from "@/lib/campaign-rule";
+import { campaignVisibleSql } from "@/lib/campaigns";
 
 const fail = (error: string, status = 400) => NextResponse.json({ error }, { status });
 
@@ -51,9 +52,17 @@ export async function POST(request: Request) {
   const eligible = checkEnrollable(await fetchEnrollmentRule(), company);
   if (!eligible.ok) return fail(eligible.reason);
 
-  const [campaign] = await query<{ id: string; name: string; status: string }>("SELECT id, name, status FROM campaigns WHERE id = $1", [campaignId]);
+  const visParams: unknown[] = [campaignId];
+  const visAdd = (v: unknown) => {
+    visParams.push(v);
+    return `$${visParams.length}`;
+  };
+  const [campaign] = await query<{ id: string; name: string; status: string }>(
+    `SELECT k.id, k.name, k.status FROM campaigns k WHERE k.id = $1 AND ${campaignVisibleSql(actor, "k", visAdd)}`,
+    visParams
+  );
   if (!campaign) return fail("Campaign not found", 404);
-  if (campaign.status !== "active") return fail("That campaign is archived.");
+  if (campaign.status !== "active") return fail(`That campaign is ${campaign.status === "draft" ? "still a draft" : campaign.status}, so it isn't open for enrollment.`);
   const steps = await query<{ position: number; day_number: number; channel: string; title: string; instructions: string }>(
     "SELECT position, day_number, channel, title, instructions FROM campaign_steps WHERE campaign_id = $1 ORDER BY position",
     [campaignId]

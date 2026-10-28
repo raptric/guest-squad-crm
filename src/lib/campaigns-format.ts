@@ -40,3 +40,14 @@ export const ENROLLMENT_CHIP: Record<string, string> = {
   completed: "bg-sky-100 text-sky-800",
   stopped: "bg-zinc-200 text-zinc-600",
 };
+
+export type Visibility = "private" | "team" | "public";
+export const VISIBILITY_LABEL: Record<string, string> = { private: "Private", team: "Team", public: "Public" };
+export const VISIBILITY_CHIP: Record<string, string> = { private: "bg-zinc-100 text-zinc-600", team: "bg-violet-100 text-violet-800", public: "bg-sky-100 text-sky-800" };
+export const CAMPAIGN_STATUS_LABEL: Record<string, string> = { draft: "Draft", active: "Active", paused: "Paused", completed: "Completed" };
+export const CAMPAIGN_STATUS_CHIP: Record<string, string> = {
+  draft: "bg-zinc-100 text-zinc-600",
+  active: "bg-emerald-100 text-emerald-800",
+  paused: "bg-amber-100 text-amber-800",
+  completed: "bg-sky-100 text-sky-800",
+};

@@ -36,7 +36,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <NavLink href="/tasks" icon={<ListCheckIcon />} badge={tasksDue} badgeTitle="Tasks due today or overdue">My tasks</NavLink>
           <NavLink href="/contacts" icon={<UserIcon />}>Contacts</NavLink>
           {canAssign(user) && <NavLink href="/duplicates" icon={<CopyIcon />}>Duplicates</NavLink>}
-          {user?.role === "super_admin" && <NavLink href="/campaigns" icon={<MegaphoneIcon />}>Campaigns</NavLink>}
+          <NavLink href="/campaigns" icon={<MegaphoneIcon />}>Campaigns</NavLink>
           {user?.role === "super_admin" && <NavLink href="/scraper-monitor" icon={<ChartIcon />}>Scraper Monitor</NavLink>}
           {user?.role === "super_admin" && <NavLink href="/users" icon={<UsersIcon />}>Users</NavLink>}
           {user?.role === "super_admin" && <NavLink href="/settings" icon={<CogIcon />}>Settings</NavLink>}

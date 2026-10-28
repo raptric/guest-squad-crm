@@ -2,10 +2,11 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import type { EnrollmentRow } from "@/lib/campaigns";
+import type { EnrollmentRow, Playbook } from "@/lib/campaigns";
 import { CHANNEL_CHIP, DUE_TONE, ENROLLMENT_CHIP, dueInfo, formatDate } from "@/lib/campaigns-format";
 import { MegaphoneIcon, PlusIcon } from "../../icons";
 import { TaskActions } from "../../tasks/task-actions";
+import { PlaybookPanel } from "../../campaigns/playbook-panel";
 
 type CampaignOption = { id: string; name: string; description: string; steps: { day_number: number; channel: string; title: string }[] };
 type Recipient = { id: number; label: string };
@@ -20,6 +21,7 @@ export function CampaignCard({
   enrollNote,
   canAct,
   enrollments,
+  playbooks,
   campaigns,
   recipients,
   lockedCampaignId,
@@ -31,6 +33,7 @@ export function CampaignCard({
   enrollNote: string | null;
   canAct: boolean;
   enrollments: EnrollmentRow[];
+  playbooks: Record<string, Playbook>;
   campaigns: CampaignOption[];
   recipients: Recipient[];
   lockedCampaignId: string | null;
@@ -65,7 +68,7 @@ export function CampaignCard({
       ) : (
         <div className="space-y-5">
           {enrollments.map((e) => (
-            <EnrollmentBlock key={e.id} enrollment={e} canAct={canAct} today={today} />
+            <EnrollmentBlock key={e.id} enrollment={e} playbook={playbooks[e.campaign_id]} canAct={canAct} today={today} />
           ))}
           {!mayEnroll && enrollNote && <p className="text-xs text-zinc-500">{enrollNote}</p>}
         </div>
@@ -86,7 +89,7 @@ export function CampaignCard({
   );
 }
 
-function EnrollmentBlock({ enrollment: e, canAct, today }: { enrollment: EnrollmentRow; canAct: boolean; today: string }) {
+function EnrollmentBlock({ enrollment: e, playbook, canAct, today }: { enrollment: EnrollmentRow; playbook: Playbook | undefined; canAct: boolean; today: string }) {
   const router = useRouter();
   const [stopping, setStopping] = useState(false);
   const [note, setNote] = useState("");
@@ -118,8 +121,11 @@ function EnrollmentBlock({ enrollment: e, canAct, today }: { enrollment: Enrollm
           <p className="truncate font-medium text-zinc-900">{e.campaign_name}</p>
           <p className="truncate text-xs text-zinc-500">For {e.recipient_label}</p>
         </div>
-        <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-medium ${ENROLLMENT_CHIP[e.status]}`}>
-          {e.status === "active" ? "Active" : e.status === "completed" ? "Completed" : "Stopped"}
+        <span className="flex shrink-0 items-center gap-1.5">
+          {e.status === "active" && e.campaign_status === "paused" && <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-800">Paused</span>}
+          <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${ENROLLMENT_CHIP[e.status]}`}>
+            {e.status === "active" ? "Active" : e.status === "completed" ? "Completed" : "Stopped"}
+          </span>
         </span>
       </div>
       <p className="mt-1 text-xs text-zinc-500">
@@ -131,6 +137,15 @@ function EnrollmentBlock({ enrollment: e, canAct, today }: { enrollment: Enrollm
           Stopped{e.stopped_by_name ? ` by ${e.stopped_by_name}` : ""}
           {e.stop_note ? `: ${e.stop_note}` : "."}
         </p>
+      )}
+
+      {e.status === "active" && e.campaign_status === "paused" && (
+        <p className="mt-1 text-xs text-amber-700">This campaign is paused, so its tasks are on hold. They move forward by the days paused when it resumes.</p>
+      )}
+      {playbook && e.status === "active" && (
+        <div className="mt-3">
+          <PlaybookPanel playbook={playbook} />
+        </div>
       )}
 
       <ul className="mt-3 divide-y divide-zinc-100">
@@ -164,7 +179,7 @@ function EnrollmentBlock({ enrollment: e, canAct, today }: { enrollment: Enrollm
                   {t.notes ? `: ${t.notes}` : ""}
                 </p>
               )}
-              <TaskActions taskId={t.id} status={t.status} canAct={canAct && e.status !== "stopped"} />
+              <TaskActions taskId={t.id} status={t.status} canAct={canAct && e.status !== "stopped" && !(e.status === "active" && e.campaign_status === "paused")} />
             </li>
           );
         })}
