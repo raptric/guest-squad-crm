@@ -7,7 +7,6 @@ import { CHANNELS, VISIBILITY_LABEL, type Visibility } from "@/lib/campaigns-for
 import type { Criteria } from "@/lib/campaign-fit-format";
 
 type Step = { key: number; day_number: string; channel: string; title: string; instructions: string };
-type Objection = { key: number; objection: string; response: string };
 
 export type CampaignFormInitial = {
   id: string;
@@ -24,7 +23,8 @@ export type CampaignFormInitial = {
   secondary_pains: string[];
   positioning: string;
   differentiators: string[];
-  objections: { objection: string; response: string }[];
+  secondary_other: string;
+  differentiators_other: string;
   criteria: Criteria;
 };
 
@@ -36,7 +36,6 @@ const field = "w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-
 
 let keySeed = 0;
 const newStep = (day = 1): Step => ({ key: ++keySeed, day_number: String(day), channel: "Email", title: "", instructions: "" });
-const newObjection = (): Objection => ({ key: ++keySeed, objection: "", response: "" });
 
 // Create / edit a campaign: identity, messaging (the playbook) and the ordered steps.
 export function CampaignForm({
@@ -103,7 +102,8 @@ export function CampaignForm({
   const [secondary, setSecondary] = useState<string[]>(initial?.secondary_pains ?? []);
   const [positioning, setPositioning] = useState(initial?.positioning ?? "");
   const [diffs, setDiffs] = useState<string[]>(initial?.differentiators ?? []);
-  const [objections, setObjections] = useState<Objection[]>((initial?.objections ?? []).map((o) => ({ key: ++keySeed, ...o })));
+  const [secondaryOther, setSecondaryOther] = useState(initial?.secondary_other ?? "");
+  const [diffsOther, setDiffsOther] = useState(initial?.differentiators_other ?? "");
   const [steps, setSteps] = useState<Step[]>(
     initial?.steps.length
       ? initial.steps.map((s) => ({ key: ++keySeed, day_number: String(s.day_number), channel: s.channel, title: s.title, instructions: s.instructions }))
@@ -153,7 +153,8 @@ export function CampaignForm({
         secondary_pains: secondary.filter((p) => p !== angle),
         positioning,
         differentiators: diffs,
-        objections: objections.map((o) => ({ objection: o.objection, response: o.response })),
+        secondary_other: secondary.includes("Other") ? secondaryOther : "",
+        differentiators_other: diffs.includes("Other") ? diffsOther : "",
         steps: steps.map((s) => ({ day_number: Number(s.day_number), channel: s.channel, title: s.title, instructions: s.instructions })),
       }),
     });
@@ -351,6 +352,9 @@ export function CampaignForm({
         <fieldset className="space-y-1.5">
           <legend className="text-sm font-medium text-zinc-700">Other pain points <span className="font-normal text-zinc-400">(optional)</span></legend>
           <Checks options={secondaryOptions} selected={secondary} onToggle={(v) => toggle(secondary, setSecondary, v)} empty="Choose a primary angle first, or add more angles in Settings." />
+          {secondary.includes("Other") && (
+            <input maxLength={200} value={secondaryOther} onChange={(e) => setSecondaryOther(e.target.value)} placeholder="What is the other pain point? e.g. Guests can't find the entrance after dark" className={field} aria-label="Other pain point" />
+          )}
         </fieldset>
 
         <label className="block space-y-1">
@@ -361,41 +365,11 @@ export function CampaignForm({
         <fieldset className="space-y-1.5">
           <legend className="text-sm font-medium text-zinc-700">Key differentiators <span className="font-normal text-zinc-400">(optional)</span></legend>
           <Checks options={diffOptions} selected={diffs} onToggle={(v) => toggle(diffs, setDiffs, v)} empty="No differentiators yet. An admin adds them in Settings." />
+          {diffs.includes("Other") && (
+            <input maxLength={200} value={diffsOther} onChange={(e) => setDiffsOther(e.target.value)} placeholder="What is the other differentiator? e.g. 24/7 multilingual team" className={field} aria-label="Other differentiator" />
+          )}
         </fieldset>
 
-        <div className="space-y-2">
-          <p className="text-sm font-medium text-zinc-700">Objections and responses <span className="font-normal text-zinc-400">(up to 10)</span></p>
-          {objections.map((o, i) => (
-            <div key={o.key} className="grid gap-2 rounded-xl border border-zinc-200 bg-zinc-50/60 p-3 sm:grid-cols-[1fr_1.4fr_auto]">
-              <input
-                maxLength={200}
-                value={o.objection}
-                onChange={(e) => setObjections((all) => all.map((x) => (x.key === o.key ? { ...x, objection: e.target.value } : x)))}
-                placeholder="Objection, e.g. We already have staff"
-                className={field}
-                aria-label={`Objection ${i + 1}`}
-              />
-              <textarea
-                rows={2}
-                maxLength={600}
-                value={o.response}
-                onChange={(e) => setObjections((all) => all.map((x) => (x.key === o.key ? { ...x, response: e.target.value } : x)))}
-                placeholder="How to respond"
-                className={field}
-                aria-label={`Response ${i + 1}`}
-              />
-              <button type="button" aria-label="Remove objection" onClick={() => setObjections((all) => all.filter((x) => x.key !== o.key))} className="grid h-9 w-9 place-items-center rounded-lg text-zinc-500 hover:bg-zinc-200 hover:text-zinc-800">
-                <TrashIcon className="h-4 w-4" />
-              </button>
-            </div>
-          ))}
-          {objections.length < 10 && (
-            <button type="button" onClick={() => setObjections((all) => [...all, newObjection()])} className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm font-medium text-zinc-700 shadow-sm hover:bg-zinc-50">
-              <PlusIcon className="h-4 w-4" />
-              Add objection
-            </button>
-          )}
-        </div>
       </section>
 
       <section className="space-y-4 rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">

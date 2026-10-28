@@ -9,7 +9,6 @@ export const READY_FOR_OUTREACH = "Ready for Outreach";
 export const TODAY_SQL = "(now() AT TIME ZONE 'UTC')::date";
 
 export type StepInput = { day_number: number; channel: string; title: string; instructions: string };
-export type ObjectionInput = { objection: string; response: string };
 export type CampaignInput = {
   name: string;
   description: string;
@@ -24,7 +23,8 @@ export type CampaignInput = {
   secondary_pains: string[];
   positioning: string;
   differentiators: string[];
-  objections: ObjectionInput[];
+  secondary_other: string; // what "Other" means, when picked among the other pain points
+  differentiators_other: string; // same for the key differentiators
 };
 
 const text = (v: unknown, max: number, label: string): { value: string } | { error: string } => {
@@ -67,19 +67,15 @@ export function parseCampaignInput(body: unknown): { value: CampaignInput } | { 
   // Ordered by day (the order they were entered breaks ties).
   const ordered = parsed.map((s, i) => ({ s, i })).sort((a, b) => a.s.day_number - b.s.day_number || a.i - b.i).map((x) => x.s);
 
-  const rawObjections = Array.isArray(b.objections) ? b.objections : [];
-  const objections: ObjectionInput[] = [];
-  for (const o of rawObjections) {
-    const r = (o ?? {}) as Record<string, unknown>;
-    const objection = typeof r.objection === "string" ? r.objection.trim() : "";
-    const response = typeof r.response === "string" ? r.response.trim() : "";
-    if (!objection && !response) continue;
-    if (!objection) return { error: "Each response needs the objection it answers." };
-    if (objection.length > 200) return { error: "An objection must be 200 characters or fewer." };
-    if (response.length > 600) return { error: "A response must be 600 characters or fewer." };
-    objections.push({ objection, response });
-  }
-  if (objections.length > 10) return { error: "A campaign can have at most 10 objections." };
+  const secondaryPicked = strings(b.secondary_pains, 8);
+  const diffsPicked = strings(b.differentiators, 12);
+  const secondaryOtherText = text(b.secondary_other, 200, "The other pain point");
+  if ("error" in secondaryOtherText) return secondaryOtherText;
+  const diffsOtherText = text(b.differentiators_other, 200, "The other differentiator");
+  if ("error" in diffsOtherText) return diffsOtherText;
+  // The custom text only counts while "Other" is ticked.
+  const secondaryOther = secondaryPicked.includes("Other") ? secondaryOtherText.value : "";
+  const differentiatorsOther = diffsPicked.includes("Other") ? diffsOtherText.value : "";
 
   const crit = (b.criteria ?? {}) as Record<string, unknown>;
   const roomsOf = (v: unknown) => (v === null || v === undefined || v === "" ? null : Number(v));
@@ -116,7 +112,8 @@ export function parseCampaignInput(body: unknown): { value: CampaignInput } | { 
       secondary_pains: strings(b.secondary_pains, 8).filter((p) => p !== angle),
       positioning: positioning.value,
       differentiators: strings(b.differentiators, 12),
-      objections,
+      secondary_other: secondaryOther,
+      differentiators_other: differentiatorsOther,
     },
   };
 }
@@ -263,7 +260,8 @@ export type Playbook = {
   secondary_pains: string[];
   positioning: string;
   differentiators: string[];
-  objections: ObjectionInput[];
+  secondary_other: string;
+  differentiators_other: string;
 };
 export type CampaignWithSteps = {
   id: string;
@@ -294,7 +292,7 @@ export async function fetchCampaign(id: string, actor: Actor): Promise<CampaignW
   const [row] = await query<Omit<CampaignWithSteps, "steps" | "playbook" | "can_manage" | "criteria"> & Playbook & CriteriaColumns>(
     `SELECT k.id, k.code, k.name, k.description, k.status, k.visibility, k.team_id, t.name AS team_name, k.owner_id, ou.name AS owner_name,
             k.copied_from, src.code AS copied_from_code,
-            k.outreach_angle, k.pain_point, k.secondary_pains, k.positioning, k.differentiators, ${CRITERIA_COLUMNS},
+            k.outreach_angle, k.pain_point, k.secondary_pains, k.secondary_other, k.positioning, k.differentiators, k.differentiators_other, ${CRITERIA_COLUMNS},
             (SELECT count(*)::int FROM campaign_enrollments e WHERE e.campaign_id = k.id AND e.status = 'active') AS running
        FROM campaigns k
        LEFT JOIN users ou ON ou.id = k.owner_id
@@ -304,16 +302,13 @@ export async function fetchCampaign(id: string, actor: Actor): Promise<CampaignW
     params
   );
   if (!row) return null;
-  const [steps, objections] = await Promise.all([
-    query<CampaignStep>("SELECT id, day_number, channel, title, instructions FROM campaign_steps WHERE campaign_id = $1 ORDER BY position", [id]),
-    query<ObjectionInput>("SELECT objection, response FROM campaign_objections WHERE campaign_id = $1 ORDER BY position", [id]),
-  ]);
-  const { outreach_angle, pain_point, secondary_pains, positioning, differentiators, target_company_types, target_property_types, rooms_min, rooms_max, target_portfolio, target_countries, ...rest } = row;
+  const steps = await query<CampaignStep>("SELECT id, day_number, channel, title, instructions FROM campaign_steps WHERE campaign_id = $1 ORDER BY position", [id]);
+  const { outreach_angle, pain_point, secondary_pains, secondary_other, positioning, differentiators, differentiators_other, target_company_types, target_property_types, rooms_min, rooms_max, target_portfolio, target_countries, ...rest } = row;
   return {
     ...rest,
     criteria: criteriaOf({ target_company_types, target_property_types, rooms_min, rooms_max, target_portfolio, target_countries }),
     steps,
-    playbook: { outreach_angle, pain_point, secondary_pains, positioning, differentiators, objections },
+    playbook: { outreach_angle, pain_point, secondary_pains, secondary_other, positioning, differentiators, differentiators_other },
     can_manage: canManageCampaign(actor, row.owner_id),
   };
 }
@@ -338,25 +333,20 @@ export async function fetchOpenCampaigns(actor: Actor) {
 export async function fetchPlaybooks(ids: string[]): Promise<Record<string, Playbook>> {
   const unique = [...new Set(ids)];
   if (!unique.length) return {};
-  const [rows, objections] = await Promise.all([
-    query<Playbook & { id: string }>(
-      "SELECT id, outreach_angle, pain_point, secondary_pains, positioning, differentiators FROM campaigns WHERE id = ANY($1::bigint[])",
-      [unique]
-    ),
-    query<ObjectionInput & { campaign_id: string }>(
-      "SELECT campaign_id, objection, response FROM campaign_objections WHERE campaign_id = ANY($1::bigint[]) ORDER BY campaign_id, position",
-      [unique]
-    ),
-  ]);
+  const rows = await query<Playbook & { id: string }>(
+    "SELECT id, outreach_angle, pain_point, secondary_pains, secondary_other, positioning, differentiators, differentiators_other FROM campaigns WHERE id = ANY($1::bigint[])",
+    [unique]
+  );
   const out: Record<string, Playbook> = {};
   for (const r of rows) {
     out[r.id] = {
       outreach_angle: r.outreach_angle,
       pain_point: r.pain_point,
       secondary_pains: r.secondary_pains,
+      secondary_other: r.secondary_other,
       positioning: r.positioning,
       differentiators: r.differentiators,
-      objections: objections.filter((o) => o.campaign_id === r.id).map(({ objection, response }) => ({ objection, response })),
+      differentiators_other: r.differentiators_other,
     };
   }
   return out;

@@ -5,7 +5,9 @@ import type { Playbook } from "@/lib/campaigns";
 export function PlaybookPanel({ playbook, defaultOpen = false }: { playbook: Playbook | undefined; defaultOpen?: boolean }) {
   if (!playbook) return null;
   const p = playbook;
-  const empty = !p.outreach_angle && !p.pain_point && !p.positioning && !p.secondary_pains.length && !p.differentiators.length && !p.objections.length;
+  const empty = !p.outreach_angle && !p.pain_point && !p.positioning && !p.secondary_pains.length && !p.differentiators.length;
+  // "Other" shows what was written instead of the word.
+  const withOther = (items: string[], other: string) => items.map((x) => (x === "Other" && other ? `Other: ${other}` : x));
   if (empty) return null;
 
   return (
@@ -23,7 +25,7 @@ export function PlaybookPanel({ playbook, defaultOpen = false }: { playbook: Pla
         {p.secondary_pains.length > 0 && (
           <div>
             <p className="text-xs font-medium text-zinc-500">Also</p>
-            <Chips items={p.secondary_pains} />
+            <Chips items={withOther(p.secondary_pains, p.secondary_other)} />
           </div>
         )}
         {p.positioning && (
@@ -35,20 +37,7 @@ export function PlaybookPanel({ playbook, defaultOpen = false }: { playbook: Pla
         {p.differentiators.length > 0 && (
           <div>
             <p className="text-xs font-medium text-zinc-500">Key differentiators</p>
-            <Chips items={p.differentiators} />
-          </div>
-        )}
-        {p.objections.length > 0 && (
-          <div>
-            <p className="text-xs font-medium text-zinc-500">Objections and responses</p>
-            <ul className="mt-1 space-y-2">
-              {p.objections.map((o, i) => (
-                <li key={i} className="rounded-lg bg-white/70 p-2.5">
-                  <p className="font-medium text-zinc-800">&ldquo;{o.objection}&rdquo;</p>
-                  {o.response && <p className="mt-0.5 whitespace-pre-wrap text-zinc-600">{o.response}</p>}
-                </li>
-              ))}
-            </ul>
+            <Chips items={withOther(p.differentiators, p.differentiators_other)} />
           </div>
         )}
       </div>

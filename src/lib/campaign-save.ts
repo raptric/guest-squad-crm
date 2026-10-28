@@ -2,7 +2,7 @@ import type { Client } from "pg";
 import { withTransaction } from "@/lib/db";
 import type { CampaignInput, ResolvedCampaign } from "@/lib/campaigns";
 
-async function writeStepsAndObjections(client: Client, campaignId: number | string, input: CampaignInput) {
+async function writeSteps(client: Client, campaignId: number | string, input: CampaignInput) {
   await client.query("DELETE FROM campaign_steps WHERE campaign_id = $1", [campaignId]);
   for (let i = 0; i < input.steps.length; i++) {
     const s = input.steps[i];
@@ -11,29 +11,25 @@ async function writeStepsAndObjections(client: Client, campaignId: number | stri
       [campaignId, i + 1, s.day_number, s.channel, s.title, s.instructions]
     );
   }
-  await client.query("DELETE FROM campaign_objections WHERE campaign_id = $1", [campaignId]);
-  for (let i = 0; i < input.objections.length; i++) {
-    const o = input.objections[i];
-    await client.query("INSERT INTO campaign_objections (campaign_id, position, objection, response) VALUES ($1, $2, $3, $4)", [campaignId, i + 1, o.objection, o.response]);
-  }
 }
 
 export async function createCampaign(actorId: number | string, input: CampaignInput, resolved: ResolvedCampaign) {
   return withTransaction(async (client) => {
     const row = (
       await client.query(
-        `INSERT INTO campaigns (name, description, status, created_by, owner_id, visibility, team_id, outreach_angle, pain_point, secondary_pains, positioning, differentiators,
+        `INSERT INTO campaigns (name, description, status, created_by, owner_id, visibility, team_id, outreach_angle, pain_point, secondary_pains, secondary_other,
+                                positioning, differentiators, differentiators_other,
                                 target_company_types, target_property_types, rooms_min, rooms_max, target_portfolio, target_countries)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18) RETURNING id, code`,
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20) RETURNING id, code`,
         [
           input.name, input.description, input.status, actorId, resolved.owner_id, resolved.visibility, resolved.team_id,
-          input.outreach_angle, input.pain_point, input.secondary_pains, input.positioning, input.differentiators,
+          input.outreach_angle, input.pain_point, input.secondary_pains, input.secondary_other, input.positioning, input.differentiators, input.differentiators_other,
           input.criteria.company_types, input.criteria.property_types, input.criteria.rooms_min, input.criteria.rooms_max,
           input.criteria.portfolio, input.criteria.countries,
         ]
       )
     ).rows[0];
-    await writeStepsAndObjections(client, row.id, input);
+    await writeSteps(client, row.id, input);
     return { id: Number(row.id), code: row.code as string };
   });
 }
@@ -43,17 +39,17 @@ export async function updateCampaign(id: number, input: CampaignInput, resolved:
   return withTransaction(async (client) => {
     await client.query(
       `UPDATE campaigns SET name = $1, description = $2, owner_id = $3, visibility = $4, team_id = $5, outreach_angle = $6, pain_point = $7,
-              secondary_pains = $8, positioning = $9, differentiators = $10,
-              target_company_types = $11, target_property_types = $12, rooms_min = $13, rooms_max = $14, target_portfolio = $15,
-              target_countries = $16, updated_at = now() WHERE id = $17`,
+              secondary_pains = $8, secondary_other = $9, positioning = $10, differentiators = $11, differentiators_other = $12,
+              target_company_types = $13, target_property_types = $14, rooms_min = $15, rooms_max = $16, target_portfolio = $17,
+              target_countries = $18, updated_at = now() WHERE id = $19`,
       [
         input.name, input.description, resolved.owner_id, resolved.visibility, resolved.team_id,
-        input.outreach_angle, input.pain_point, input.secondary_pains, input.positioning, input.differentiators,
+        input.outreach_angle, input.pain_point, input.secondary_pains, input.secondary_other, input.positioning, input.differentiators, input.differentiators_other,
         input.criteria.company_types, input.criteria.property_types, input.criteria.rooms_min, input.criteria.rooms_max,
         input.criteria.portfolio, input.criteria.countries, id,
       ]
     );
-    await writeStepsAndObjections(client, id, input);
+    await writeSteps(client, id, input);
   });
 }
 
@@ -62,9 +58,11 @@ export async function duplicateCampaign(sourceId: number, actorId: number | stri
   return withTransaction(async (client) => {
     const row = (
       await client.query(
-        `INSERT INTO campaigns (name, description, status, created_by, owner_id, visibility, copied_from, outreach_angle, pain_point, secondary_pains, positioning, differentiators,
+        `INSERT INTO campaigns (name, description, status, created_by, owner_id, visibility, copied_from, outreach_angle, pain_point, secondary_pains, secondary_other,
+                                positioning, differentiators, differentiators_other,
                                 target_company_types, target_property_types, rooms_min, rooms_max, target_portfolio, target_countries)
-         SELECT left(name, 112) || ' (copy)', description, 'draft', $2, $2, 'private', id, outreach_angle, pain_point, secondary_pains, positioning, differentiators,
+         SELECT left(name, 112) || ' (copy)', description, 'draft', $2, $2, 'private', id, outreach_angle, pain_point, secondary_pains, secondary_other,
+                positioning, differentiators, differentiators_other,
                 target_company_types, target_property_types, rooms_min, rooms_max, target_portfolio, target_countries
            FROM campaigns WHERE id = $1 RETURNING id, code`,
         [sourceId, actorId]
@@ -73,11 +71,6 @@ export async function duplicateCampaign(sourceId: number, actorId: number | stri
     await client.query(
       `INSERT INTO campaign_steps (campaign_id, position, day_number, channel, title, instructions)
        SELECT $2, position, day_number, channel, title, instructions FROM campaign_steps WHERE campaign_id = $1`,
-      [sourceId, row.id]
-    );
-    await client.query(
-      `INSERT INTO campaign_objections (campaign_id, position, objection, response)
-       SELECT $2, position, objection, response FROM campaign_objections WHERE campaign_id = $1`,
       [sourceId, row.id]
     );
     return { id: Number(row.id), code: row.code as string };

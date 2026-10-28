@@ -77,9 +77,10 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
             outreach_angle: campaign.playbook.outreach_angle,
             pain_point: campaign.playbook.pain_point,
             secondary_pains: campaign.playbook.secondary_pains,
+            secondary_other: campaign.playbook.secondary_other,
             positioning: campaign.playbook.positioning,
             differentiators: campaign.playbook.differentiators,
-            objections: campaign.playbook.objections,
+            differentiators_other: campaign.playbook.differentiators_other,
             criteria: campaign.criteria,
           }}
           lists={data.lists}
