@@ -276,16 +276,18 @@ export function CampaignForm({
         {isProperty && (
           <div className="space-y-4 rounded-xl border border-dashed border-zinc-300 p-4">
             <p className="text-xs font-medium uppercase tracking-wide text-zinc-400">Property</p>
-            <div className="space-y-1.5">
-              <span className="text-sm font-medium text-zinc-700">Property type</span>
-              <PickMany options={withSaved(lists.propertyTypes, propertyTypes)} selected={propertyTypes} onChange={setPropertyTypes} placeholder="Any property type" empty="No property types in Settings." />
-            </div>
-            <div className="space-y-1">
-              <span className="text-sm font-medium text-zinc-700">Rooms</span>
-              <div className="flex items-center gap-2">
-                <input type="number" min={0} max={100000} value={roomsMin} onChange={(e) => setRoomsMin(e.target.value)} placeholder="Min" className={field} aria-label="Minimum rooms" />
-                <span className="text-zinc-400">to</span>
-                <input type="number" min={0} max={100000} value={roomsMax} onChange={(e) => setRoomsMax(e.target.value)} placeholder="Max" className={field} aria-label="Maximum rooms" />
+            <div className="grid items-start gap-4 sm:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
+              <div className="min-w-0 space-y-1.5">
+                <span className="text-sm font-medium text-zinc-700">Property type</span>
+                <PickMany options={withSaved(lists.propertyTypes, propertyTypes)} selected={propertyTypes} onChange={setPropertyTypes} placeholder="Any property type" empty="No property types in Settings." fullWidth />
+              </div>
+              <div className="min-w-0 space-y-1.5">
+                <span className="text-sm font-medium text-zinc-700">Rooms</span>
+                <div className="flex items-center gap-2">
+                  <input type="number" min={0} max={100000} value={roomsMin} onChange={(e) => setRoomsMin(e.target.value)} placeholder="Min" className={field} aria-label="Minimum rooms" />
+                  <span className="text-zinc-400">to</span>
+                  <input type="number" min={0} max={100000} value={roomsMax} onChange={(e) => setRoomsMax(e.target.value)} placeholder="Max" className={field} aria-label="Maximum rooms" />
+                </div>
               </div>
             </div>
             <fieldset className="space-y-1">
@@ -476,7 +478,7 @@ export function CampaignForm({
 }
 
 // A dropdown that adds to a list: leave it empty for "any", pick several to include them all. Picks show as removable chips.
-function PickMany({ options, selected, onChange, placeholder, empty }: { options: string[]; selected: string[]; onChange: (v: string[]) => void; placeholder: string; empty: string }) {
+function PickMany({ options, selected, onChange, placeholder, empty, fullWidth }: { options: string[]; selected: string[]; onChange: (v: string[]) => void; placeholder: string; empty: string; fullWidth?: boolean }) {
   if (options.length === 0) return <p className="text-xs text-zinc-500">{empty}</p>;
   const remaining = options.filter((o) => !selected.includes(o));
   return (
@@ -485,7 +487,7 @@ function PickMany({ options, selected, onChange, placeholder, empty }: { options
         value=""
         onChange={(e) => e.target.value && onChange([...selected, e.target.value])}
         disabled={remaining.length === 0}
-        className={`${field} max-w-xs`}
+        className={fullWidth ? field : `${field} max-w-xs`}
         aria-label={placeholder}
       >
         <option value="">{selected.length ? "Add another…" : placeholder}</option>
