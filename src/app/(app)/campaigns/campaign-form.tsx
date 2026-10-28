@@ -25,6 +25,7 @@ export type CampaignFormInitial = {
   differentiators: string[];
   secondary_other: string;
   differentiators_other: string;
+  call_to_action: string;
   criteria: Criteria;
 };
 
@@ -104,6 +105,7 @@ export function CampaignForm({
   const [diffs, setDiffs] = useState<string[]>(initial?.differentiators ?? []);
   const [secondaryOther, setSecondaryOther] = useState(initial?.secondary_other ?? "");
   const [diffsOther, setDiffsOther] = useState(initial?.differentiators_other ?? "");
+  const [cta, setCta] = useState(initial?.call_to_action ?? "");
   const [steps, setSteps] = useState<Step[]>(
     initial?.steps.length
       ? initial.steps.map((s) => ({ key: ++keySeed, day_number: String(s.day_number), channel: s.channel, title: s.title, instructions: s.instructions }))
@@ -155,6 +157,7 @@ export function CampaignForm({
         differentiators: diffs,
         secondary_other: secondary.includes("Other") ? secondaryOther : "",
         differentiators_other: diffs.includes("Other") ? diffsOther : "",
+        call_to_action: cta,
         steps: steps.map((s) => ({ day_number: Number(s.day_number), channel: s.channel, title: s.title, instructions: s.instructions })),
       }),
     });
@@ -369,6 +372,11 @@ export function CampaignForm({
             <input maxLength={200} value={diffsOther} onChange={(e) => setDiffsOther(e.target.value)} placeholder="What is the other differentiator? e.g. 24/7 multilingual team" className={field} aria-label="Other differentiator" />
           )}
         </fieldset>
+
+        <label className="block space-y-1">
+          <span className="text-sm font-medium text-zinc-700">Call to action <span className="font-normal text-zinc-400">(optional)</span></span>
+          <input maxLength={200} value={cta} onChange={(e) => setCta(e.target.value)} placeholder="What to ask the hotel for at the end of every message. e.g. Book a 15-minute call this week" className={field} />
+        </label>
 
       </section>
 

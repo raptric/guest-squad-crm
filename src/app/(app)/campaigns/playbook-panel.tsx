@@ -5,7 +5,7 @@ import type { Playbook } from "@/lib/campaigns";
 export function PlaybookPanel({ playbook, defaultOpen = false }: { playbook: Playbook | undefined; defaultOpen?: boolean }) {
   if (!playbook) return null;
   const p = playbook;
-  const empty = !p.outreach_angle && !p.pain_point && !p.positioning && !p.secondary_pains.length && !p.differentiators.length;
+  const empty = !p.outreach_angle && !p.pain_point && !p.positioning && !p.secondary_pains.length && !p.differentiators.length && !p.call_to_action;
   // "Other" shows what was written instead of the word.
   const withOther = (items: string[], other: string) => items.map((x) => (x === "Other" && other ? `Other: ${other}` : x));
   if (empty) return null;
@@ -32,6 +32,12 @@ export function PlaybookPanel({ playbook, defaultOpen = false }: { playbook: Pla
           <div>
             <p className="text-xs font-medium text-zinc-500">Positioning</p>
             <p className="whitespace-pre-wrap">{p.positioning}</p>
+          </div>
+        )}
+        {p.call_to_action && (
+          <div>
+            <p className="text-xs font-medium text-zinc-500">Call to action</p>
+            <p className="whitespace-pre-wrap">{p.call_to_action}</p>
           </div>
         )}
         {p.differentiators.length > 0 && (

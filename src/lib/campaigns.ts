@@ -25,6 +25,7 @@ export type CampaignInput = {
   differentiators: string[];
   secondary_other: string; // what "Other" means, when picked among the other pain points
   differentiators_other: string; // same for the key differentiators
+  call_to_action: string; // what to ask the hotel for
 };
 
 const text = (v: unknown, max: number, label: string): { value: string } | { error: string } => {
@@ -67,6 +68,8 @@ export function parseCampaignInput(body: unknown): { value: CampaignInput } | { 
   // Ordered by day (the order they were entered breaks ties).
   const ordered = parsed.map((s, i) => ({ s, i })).sort((a, b) => a.s.day_number - b.s.day_number || a.i - b.i).map((x) => x.s);
 
+  const cta = text(b.call_to_action, 200, "The call to action");
+  if ("error" in cta) return cta;
   const secondaryPicked = strings(b.secondary_pains, 8);
   const diffsPicked = strings(b.differentiators, 12);
   const secondaryOtherText = text(b.secondary_other, 200, "The other pain point");
@@ -114,6 +117,7 @@ export function parseCampaignInput(body: unknown): { value: CampaignInput } | { 
       differentiators: strings(b.differentiators, 12),
       secondary_other: secondaryOther,
       differentiators_other: differentiatorsOther,
+      call_to_action: cta.value,
     },
   };
 }
@@ -262,6 +266,7 @@ export type Playbook = {
   differentiators: string[];
   secondary_other: string;
   differentiators_other: string;
+  call_to_action: string;
 };
 export type CampaignWithSteps = {
   id: string;
@@ -292,7 +297,7 @@ export async function fetchCampaign(id: string, actor: Actor): Promise<CampaignW
   const [row] = await query<Omit<CampaignWithSteps, "steps" | "playbook" | "can_manage" | "criteria"> & Playbook & CriteriaColumns>(
     `SELECT k.id, k.code, k.name, k.description, k.status, k.visibility, k.team_id, t.name AS team_name, k.owner_id, ou.name AS owner_name,
             k.copied_from, src.code AS copied_from_code,
-            k.outreach_angle, k.pain_point, k.secondary_pains, k.secondary_other, k.positioning, k.differentiators, k.differentiators_other, ${CRITERIA_COLUMNS},
+            k.outreach_angle, k.pain_point, k.secondary_pains, k.secondary_other, k.positioning, k.differentiators, k.differentiators_other, k.call_to_action, ${CRITERIA_COLUMNS},
             (SELECT count(*)::int FROM campaign_enrollments e WHERE e.campaign_id = k.id AND e.status = 'active') AS running
        FROM campaigns k
        LEFT JOIN users ou ON ou.id = k.owner_id
@@ -303,12 +308,12 @@ export async function fetchCampaign(id: string, actor: Actor): Promise<CampaignW
   );
   if (!row) return null;
   const steps = await query<CampaignStep>("SELECT id, day_number, channel, title, instructions FROM campaign_steps WHERE campaign_id = $1 ORDER BY position", [id]);
-  const { outreach_angle, pain_point, secondary_pains, secondary_other, positioning, differentiators, differentiators_other, target_company_types, target_property_types, rooms_min, rooms_max, target_portfolio, target_countries, ...rest } = row;
+  const { outreach_angle, pain_point, secondary_pains, secondary_other, positioning, differentiators, differentiators_other, call_to_action, target_company_types, target_property_types, rooms_min, rooms_max, target_portfolio, target_countries, ...rest } = row;
   return {
     ...rest,
     criteria: criteriaOf({ target_company_types, target_property_types, rooms_min, rooms_max, target_portfolio, target_countries }),
     steps,
-    playbook: { outreach_angle, pain_point, secondary_pains, secondary_other, positioning, differentiators, differentiators_other },
+    playbook: { outreach_angle, pain_point, secondary_pains, secondary_other, positioning, differentiators, differentiators_other, call_to_action },
     can_manage: canManageCampaign(actor, row.owner_id),
   };
 }
@@ -334,7 +339,7 @@ export async function fetchPlaybooks(ids: string[]): Promise<Record<string, Play
   const unique = [...new Set(ids)];
   if (!unique.length) return {};
   const rows = await query<Playbook & { id: string }>(
-    "SELECT id, outreach_angle, pain_point, secondary_pains, secondary_other, positioning, differentiators, differentiators_other FROM campaigns WHERE id = ANY($1::bigint[])",
+    "SELECT id, outreach_angle, pain_point, secondary_pains, secondary_other, positioning, differentiators, differentiators_other, call_to_action FROM campaigns WHERE id = ANY($1::bigint[])",
     [unique]
   );
   const out: Record<string, Playbook> = {};
@@ -347,6 +352,7 @@ export async function fetchPlaybooks(ids: string[]): Promise<Record<string, Play
       positioning: r.positioning,
       differentiators: r.differentiators,
       differentiators_other: r.differentiators_other,
+      call_to_action: r.call_to_action,
     };
   }
   return out;

@@ -18,12 +18,13 @@ export async function createCampaign(actorId: number | string, input: CampaignIn
     const row = (
       await client.query(
         `INSERT INTO campaigns (name, description, status, created_by, owner_id, visibility, team_id, outreach_angle, pain_point, secondary_pains, secondary_other,
-                                positioning, differentiators, differentiators_other,
+                                positioning, differentiators, differentiators_other, call_to_action,
                                 target_company_types, target_property_types, rooms_min, rooms_max, target_portfolio, target_countries)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20) RETURNING id, code`,
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21) RETURNING id, code`,
         [
           input.name, input.description, input.status, actorId, resolved.owner_id, resolved.visibility, resolved.team_id,
           input.outreach_angle, input.pain_point, input.secondary_pains, input.secondary_other, input.positioning, input.differentiators, input.differentiators_other,
+          input.call_to_action,
           input.criteria.company_types, input.criteria.property_types, input.criteria.rooms_min, input.criteria.rooms_max,
           input.criteria.portfolio, input.criteria.countries,
         ]
@@ -39,12 +40,13 @@ export async function updateCampaign(id: number, input: CampaignInput, resolved:
   return withTransaction(async (client) => {
     await client.query(
       `UPDATE campaigns SET name = $1, description = $2, owner_id = $3, visibility = $4, team_id = $5, outreach_angle = $6, pain_point = $7,
-              secondary_pains = $8, secondary_other = $9, positioning = $10, differentiators = $11, differentiators_other = $12,
-              target_company_types = $13, target_property_types = $14, rooms_min = $15, rooms_max = $16, target_portfolio = $17,
-              target_countries = $18, updated_at = now() WHERE id = $19`,
+              secondary_pains = $8, secondary_other = $9, positioning = $10, differentiators = $11, differentiators_other = $12, call_to_action = $13,
+              target_company_types = $14, target_property_types = $15, rooms_min = $16, rooms_max = $17, target_portfolio = $18,
+              target_countries = $19, updated_at = now() WHERE id = $20`,
       [
         input.name, input.description, resolved.owner_id, resolved.visibility, resolved.team_id,
         input.outreach_angle, input.pain_point, input.secondary_pains, input.secondary_other, input.positioning, input.differentiators, input.differentiators_other,
+        input.call_to_action,
         input.criteria.company_types, input.criteria.property_types, input.criteria.rooms_min, input.criteria.rooms_max,
         input.criteria.portfolio, input.criteria.countries, id,
       ]
@@ -59,10 +61,10 @@ export async function duplicateCampaign(sourceId: number, actorId: number | stri
     const row = (
       await client.query(
         `INSERT INTO campaigns (name, description, status, created_by, owner_id, visibility, copied_from, outreach_angle, pain_point, secondary_pains, secondary_other,
-                                positioning, differentiators, differentiators_other,
+                                positioning, differentiators, differentiators_other, call_to_action,
                                 target_company_types, target_property_types, rooms_min, rooms_max, target_portfolio, target_countries)
          SELECT left(name, 112) || ' (copy)', description, 'draft', $2, $2, 'private', id, outreach_angle, pain_point, secondary_pains, secondary_other,
-                positioning, differentiators, differentiators_other,
+                positioning, differentiators, differentiators_other, call_to_action,
                 target_company_types, target_property_types, rooms_min, rooms_max, target_portfolio, target_countries
            FROM campaigns WHERE id = $1 RETURNING id, code`,
         [sourceId, actorId]

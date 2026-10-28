@@ -81,6 +81,7 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
             positioning: campaign.playbook.positioning,
             differentiators: campaign.playbook.differentiators,
             differentiators_other: campaign.playbook.differentiators_other,
+            call_to_action: campaign.playbook.call_to_action,
             criteria: campaign.criteria,
           }}
           lists={data.lists}
