@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowDownIcon, ArrowUpIcon, PlusIcon, TrashIcon } from "../icons";
 import { CHANNELS, VISIBILITY_LABEL, type Visibility } from "@/lib/campaigns-format";
+import { PORTFOLIO_LABEL, type Criteria, type Portfolio } from "@/lib/campaign-fit-format";
 
 type Step = { key: number; day_number: string; channel: string; title: string; instructions: string };
 type Objection = { key: number; objection: string; response: string };
@@ -24,9 +25,11 @@ export type CampaignFormInitial = {
   positioning: string;
   differentiators: string[];
   objections: { objection: string; response: string }[];
+  criteria: Criteria;
 };
 
-type Lists = { angles: string[]; differentiators: string[] };
+type Lists = { angles: string[]; differentiators: string[]; companyTypes: string[]; propertyTypes: string[]; countries: string[]; states: string[] };
+type Preview = { strong: number; partial: number; weak: number; total: number };
 type Viewer = { role: string; teamId: string | null; teamName: string | null; id: string; name: string };
 
 const field = "w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-100";
@@ -57,6 +60,43 @@ export function CampaignForm({
   const [teamId, setTeamId] = useState(initial?.team_id ?? teams[0]?.id ?? "");
   const [ownerId, setOwnerId] = useState(initial?.owner_id ?? viewer.id);
   const [status, setStatus] = useState<"draft" | "active">("draft");
+  // Target audience (every criterion is optional). New campaigns start with Property ticked.
+  const [companyTypes, setCompanyTypes] = useState<string[]>(initial ? initial.criteria.company_types : lists.companyTypes.includes("Property") ? ["Property"] : []);
+  const [propertyTypes, setPropertyTypes] = useState<string[]>(initial?.criteria.property_types ?? []);
+  const [roomsMin, setRoomsMin] = useState(initial?.criteria.rooms_min?.toString() ?? "");
+  const [roomsMax, setRoomsMax] = useState(initial?.criteria.rooms_max?.toString() ?? "");
+  const [portfolio, setPortfolio] = useState<Portfolio>(initial?.criteria.portfolio ?? "any");
+  const [countries, setCountries] = useState<string[]>(initial?.criteria.countries ?? []);
+  const [states, setStates] = useState<string[]>(initial?.criteria.states ?? []);
+  const [preview, setPreview] = useState<Preview | null>(null);
+  const [previewing, setPreviewing] = useState(false);
+  const criteria: Criteria = {
+    company_types: companyTypes,
+    property_types: propertyTypes,
+    rooms_min: roomsMin === "" ? null : Number(roomsMin),
+    rooms_max: roomsMax === "" ? null : Number(roomsMax),
+    portfolio,
+    countries,
+    states,
+  };
+  const hasCriteria = companyTypes.length > 0 || propertyTypes.length > 0 || roomsMin !== "" || roomsMax !== "" || portfolio !== "any" || countries.length > 0 || states.length > 0;
+  const criteriaKey = JSON.stringify(criteria);
+
+  // Live preview: how many companies you could enroll right now would fit, for the criteria as they stand.
+  useEffect(() => {
+    if (!hasCriteria) {
+      setPreview(null);
+      return;
+    }
+    setPreviewing(true);
+    const handle = setTimeout(async () => {
+      const res = await fetch("/api/campaigns/fit-preview", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ criteria: JSON.parse(criteriaKey) }) });
+      setPreview(res.ok ? await res.json() : null);
+      setPreviewing(false);
+    }, 700);
+    return () => clearTimeout(handle);
+  }, [criteriaKey, hasCriteria]);
+
   const [angle, setAngle] = useState(initial?.outreach_angle ?? "");
   const [pain, setPain] = useState(initial?.pain_point ?? "");
   const [secondary, setSecondary] = useState<string[]>(initial?.secondary_pains ?? []);
@@ -106,6 +146,7 @@ export function CampaignForm({
         team_id: visibility === "team" && isAdmin ? Number(teamId) : null,
         owner_id: isAdmin ? Number(ownerId) : null,
         status: initial ? undefined : status,
+        criteria,
         outreach_angle: angle || null,
         pain_point: pain,
         secondary_pains: secondary.filter((p) => p !== angle),
@@ -212,6 +253,63 @@ export function CampaignForm({
           />
           <span className="text-xs text-zinc-500">{description.length.toLocaleString()} / 8,000</span>
         </label>
+      </section>
+
+      <section className="space-y-4 rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
+        <div>
+          <h2 className="text-base font-semibold text-zinc-900">Target audience</h2>
+          <p className="text-sm text-zinc-500">Who this campaign is for. Every field is optional: leave it empty if it doesn&apos;t matter. When someone enrolls a company, they see how well it fits.</p>
+        </div>
+
+        <fieldset className="space-y-1.5">
+          <legend className="text-sm font-medium text-zinc-700">Company type</legend>
+          <Checks options={lists.companyTypes} selected={companyTypes} onToggle={(v) => toggle(companyTypes, setCompanyTypes, v)} empty="No company types in Settings." />
+        </fieldset>
+        <fieldset className="space-y-1.5">
+          <legend className="text-sm font-medium text-zinc-700">Property type <span className="font-normal text-zinc-400">(properties only)</span></legend>
+          <Checks options={lists.propertyTypes} selected={propertyTypes} onToggle={(v) => toggle(propertyTypes, setPropertyTypes, v)} empty="No property types in Settings." />
+        </fieldset>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-1">
+            <span className="text-sm font-medium text-zinc-700">Rooms <span className="font-normal text-zinc-400">(properties only)</span></span>
+            <div className="flex items-center gap-2">
+              <input type="number" min={0} max={100000} value={roomsMin} onChange={(e) => setRoomsMin(e.target.value)} placeholder="Min" className={field} aria-label="Minimum rooms" />
+              <span className="text-zinc-400">to</span>
+              <input type="number" min={0} max={100000} value={roomsMax} onChange={(e) => setRoomsMax(e.target.value)} placeholder="Max" className={field} aria-label="Maximum rooms" />
+            </div>
+          </div>
+          <fieldset className="space-y-1">
+            <legend className="text-sm font-medium text-zinc-700">Portfolio <span className="font-normal text-zinc-400">(properties only)</span></legend>
+            <div className="flex flex-wrap gap-x-4 gap-y-1">
+              {(["any", "independent", "portfolio"] as const).map((p) => (
+                <label key={p} className="flex cursor-pointer items-center gap-1.5 text-sm text-zinc-700">
+                  <input type="radio" name="portfolio" checked={portfolio === p} onChange={() => setPortfolio(p)} />
+                  {PORTFOLIO_LABEL[p]}
+                </label>
+              ))}
+            </div>
+          </fieldset>
+        </div>
+        <fieldset className="space-y-1.5">
+          <legend className="text-sm font-medium text-zinc-700">Location <span className="font-normal text-zinc-400">(optional)</span></legend>
+          <p className="text-xs text-zinc-500">Countries</p>
+          <Checks options={withSaved(lists.countries, countries)} selected={countries} onToggle={(v) => toggle(countries, setCountries, v)} empty="No countries in Settings." />
+          <p className="pt-1 text-xs text-zinc-500">States / regions, written as they appear in your data. Tick every spelling you want to include.</p>
+          <Checks options={withSaved(lists.states, states)} selected={states} onToggle={(v) => toggle(states, setStates, v)} empty="No states in the data yet." />
+        </fieldset>
+
+        <div className="rounded-xl bg-zinc-50 px-4 py-3 text-sm text-zinc-700">
+          {!hasCriteria ? (
+            <span className="text-zinc-500">No criteria set, so enrolling won&apos;t show a fit.</span>
+          ) : preview === null ? (
+            <span className="text-zinc-500">{previewing ? "Counting…" : "Couldn't count right now."}</span>
+          ) : (
+            <span className={previewing ? "opacity-60" : ""}>
+              Right now, of <strong>{preview.total.toLocaleString()}</strong> companies you could enroll: <strong className="text-emerald-700">{preview.strong.toLocaleString()} strong</strong> ·{" "}
+              <strong className="text-amber-700">{preview.partial.toLocaleString()} partial</strong> · <strong className="text-red-700">{preview.weak.toLocaleString()} weak</strong>.
+            </span>
+          )}
+        </div>
       </section>
 
       <section className="space-y-4 rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">

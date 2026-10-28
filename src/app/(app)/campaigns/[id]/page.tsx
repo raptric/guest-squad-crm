@@ -8,6 +8,7 @@ import { CampaignForm } from "../campaign-form";
 import { CampaignStatusActions } from "../status-actions";
 import { DuplicateButton } from "../duplicate-button";
 import { PlaybookPanel } from "../playbook-panel";
+import { audienceSummary } from "@/lib/campaign-fit-format";
 
 export const dynamic = "force-dynamic";
 
@@ -42,7 +43,12 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
           </p>
         </div>
         <div className="flex flex-col items-end gap-2">
-          <DuplicateButton id={campaign.id} />
+          <div className="flex items-center gap-2">
+            <Link href={`/campaigns/${campaign.id}/fit`} className="rounded-lg border border-zinc-300 px-2.5 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-50">
+              Companies that fit
+            </Link>
+            <DuplicateButton id={campaign.id} />
+          </div>
           {campaign.can_manage && <CampaignStatusActions id={campaign.id} status={campaign.status} />}
         </div>
       </div>
@@ -74,6 +80,7 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
             positioning: campaign.playbook.positioning,
             differentiators: campaign.playbook.differentiators,
             objections: campaign.playbook.objections,
+            criteria: campaign.criteria,
           }}
           lists={data.lists}
           viewer={data.viewer}
@@ -86,6 +93,12 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
             <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
               <h2 className="mb-2 text-base font-semibold text-zinc-900">Description</h2>
               <p className="whitespace-pre-wrap text-sm text-zinc-700">{campaign.description}</p>
+            </section>
+          )}
+          {audienceSummary(campaign.criteria) && (
+            <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
+              <h2 className="mb-1 text-base font-semibold text-zinc-900">Target audience</h2>
+              <p className="text-sm text-zinc-700">{audienceSummary(campaign.criteria)}</p>
             </section>
           )}
           <PlaybookPanel playbook={campaign.playbook} defaultOpen />

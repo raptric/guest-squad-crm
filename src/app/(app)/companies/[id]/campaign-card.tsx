@@ -7,8 +7,9 @@ import { CHANNEL_CHIP, DUE_TONE, ENROLLMENT_CHIP, dueInfo, formatDate } from "@/
 import { MegaphoneIcon, PlusIcon } from "../../icons";
 import { TaskActions } from "../../tasks/task-actions";
 import { PlaybookPanel } from "../../campaigns/playbook-panel";
+import { FIT_CHIP, FIT_TEXT, type Fit } from "@/lib/campaign-fit-format";
 
-type CampaignOption = { id: string; name: string; description: string; steps: { day_number: number; channel: string; title: string }[] };
+type CampaignOption = { id: string; name: string; description: string; steps: { day_number: number; channel: string; title: string }[]; fit: Fit | null };
 type Recipient = { id: number; label: string };
 
 const addDays = (start: string, n: number) => new Date(Date.parse(`${start}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
@@ -122,6 +123,7 @@ function EnrollmentBlock({ enrollment: e, playbook, canAct, today }: { enrollmen
           <p className="truncate text-xs text-zinc-500">For {e.recipient_label}</p>
         </div>
         <span className="flex shrink-0 items-center gap-1.5">
+          {e.fit_label && <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${FIT_CHIP[e.fit_label]}`}>{FIT_TEXT[e.fit_label]}</span>}
           {e.status === "active" && e.campaign_status === "paused" && <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-800">Paused</span>}
           <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${ENROLLMENT_CHIP[e.status]}`}>
             {e.status === "active" ? "Active" : e.status === "completed" ? "Completed" : "Stopped"}
@@ -287,10 +289,27 @@ function EnrollDialog({
                 {options.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.name}
+                    {c.fit?.label ? ` · ${FIT_TEXT[c.fit.label]}` : ""}
                   </option>
                 ))}
               </select>
             </label>
+
+            {campaign?.fit?.label && (
+              <div className={`space-y-1.5 rounded-xl p-3 text-sm ${campaign.fit.label === "weak" ? "bg-red-50" : campaign.fit.label === "partial" ? "bg-amber-50" : "bg-emerald-50"}`}>
+                <p className="flex items-center gap-2 font-medium text-zinc-800">
+                  <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${FIT_CHIP[campaign.fit.label]}`}>{FIT_TEXT[campaign.fit.label]}</span>
+                  {campaign.fit.label === "weak" ? "This company doesn't match this campaign's target audience well." : "How this company matches the target audience:"}
+                </p>
+                <ul className="space-y-0.5 text-xs text-zinc-700">
+                  {campaign.fit.lines.map((l, i) => (
+                    <li key={i} className={l.result === "miss" ? "font-medium text-red-700" : l.result === "unknown" ? "text-zinc-500" : ""}>
+                      {l.result === "match" ? "✓" : l.result === "miss" ? "✗" : "?"} {l.text}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
             {campaign && (
               <div className="space-y-2 rounded-xl bg-zinc-50 p-4 text-sm">
@@ -353,7 +372,7 @@ function EnrollDialog({
               disabled={saving || !campaignId || !recipient || !start}
               className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-40"
             >
-              {saving ? "Enrolling..." : `Enroll (${campaign?.steps.length ?? 0} tasks)`}
+              {saving ? "Enrolling..." : `${campaign?.fit?.label === "weak" ? "Enroll anyway" : "Enroll"} (${campaign?.steps.length ?? 0} tasks)`}
             </button>
           )}
         </div>

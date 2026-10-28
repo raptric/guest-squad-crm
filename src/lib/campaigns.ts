@@ -2,6 +2,7 @@ import { query } from "@/lib/db";
 import { leadScopeSql, type Actor } from "@/lib/assignment";
 import { visibleSql } from "@/lib/visibility";
 import { CHANNELS, type Visibility } from "@/lib/campaigns-format";
+import { audienceSummary, EMPTY_CRITERIA, type Criteria, type Portfolio } from "@/lib/campaign-fit-format";
 
 // Campaigns, phase 1: manual steps and tasks. "Today" is the UTC calendar date for now (per-user time zones come later).
 export const READY_FOR_OUTREACH = "Ready for Outreach";
@@ -17,6 +18,7 @@ export type CampaignInput = {
   team_id: number | null; // admins pick the team for a Team campaign
   owner_id: number | null; // admins can hand a campaign to someone else
   status: "draft" | "active"; // only used when creating
+  criteria: Criteria; // the target audience
   outreach_angle: string | null;
   pain_point: string;
   secondary_pains: string[];
@@ -79,6 +81,22 @@ export function parseCampaignInput(body: unknown): { value: CampaignInput } | { 
   }
   if (objections.length > 10) return { error: "A campaign can have at most 10 objections." };
 
+  const crit = (b.criteria ?? {}) as Record<string, unknown>;
+  const roomsOf = (v: unknown) => (v === null || v === undefined || v === "" ? null : Number(v));
+  const roomsMin = roomsOf(crit.rooms_min);
+  const roomsMax = roomsOf(crit.rooms_max);
+  for (const r of [roomsMin, roomsMax]) if (r !== null && (!Number.isInteger(r) || r < 0 || r > 100000)) return { error: "Rooms must be whole numbers from 0 to 100,000." };
+  if (roomsMin !== null && roomsMax !== null && roomsMin > roomsMax) return { error: "The minimum rooms can't be above the maximum." };
+  const criteria: Criteria = {
+    company_types: strings(crit.company_types, 20),
+    property_types: strings(crit.property_types, 30),
+    rooms_min: roomsMin,
+    rooms_max: roomsMax,
+    portfolio: (["independent", "portfolio"].includes(String(crit.portfolio)) ? crit.portfolio : "any") as Portfolio,
+    countries: strings(crit.countries, 40),
+    states: strings(crit.states, 80).filter((s) => s.length <= 120),
+  };
+
   const visibility = b.visibility === "team" || b.visibility === "public" ? b.visibility : "private";
   const angle = typeof b.outreach_angle === "string" && b.outreach_angle.trim() ? b.outreach_angle.trim() : null;
   const teamId = Number(b.team_id);
@@ -92,6 +110,7 @@ export function parseCampaignInput(body: unknown): { value: CampaignInput } | { 
       team_id: Number.isInteger(teamId) && teamId > 0 ? teamId : null,
       owner_id: Number.isInteger(ownerId) && ownerId > 0 ? ownerId : null,
       status: b.status === "active" ? "active" : "draft",
+      criteria,
       outreach_angle: angle,
       pain_point: pain.value,
       secondary_pains: strings(b.secondary_pains, 8).filter((p) => p !== angle),
@@ -113,7 +132,7 @@ export type ResolvedCampaign = { visibility: Visibility; team_id: number | null;
 export async function resolveCampaignInput(
   actor: Actor,
   input: CampaignInput,
-  existing?: { visibility: string; team_id: string | null; owner_id: string | null; outreach_angle: string | null; secondary_pains: string[]; differentiators: string[] }
+  existing?: { visibility: string; team_id: string | null; owner_id: string | null; outreach_angle: string | null; secondary_pains: string[]; differentiators: string[]; criteria?: Criteria }
 ): Promise<{ value: ResolvedCampaign } | { error: string }> {
   const isAdmin = actor.role === "super_admin";
 
@@ -141,7 +160,7 @@ export async function resolveCampaignInput(
   }
 
   const lists = await query<{ field_name: string; value: string }>(
-    "SELECT field_name, value FROM picklist_values WHERE is_active AND field_name IN ('outreach_angle', 'key_differentiator')"
+    "SELECT field_name, value FROM picklist_values WHERE is_active AND field_name IN ('outreach_angle', 'key_differentiator', 'company_type', 'property_type', 'country')"
   );
   const angles = new Set(lists.filter((l) => l.field_name === "outreach_angle").map((l) => l.value));
   const diffs = new Set(lists.filter((l) => l.field_name === "key_differentiator").map((l) => l.value));
@@ -151,6 +170,11 @@ export async function resolveCampaignInput(
   if (input.outreach_angle && !angles.has(input.outreach_angle)) return { error: "That outreach angle isn't in the list." };
   if (input.secondary_pains.some((p) => !angles.has(p))) return { error: "A secondary pain point isn't in the list." };
   if (input.differentiators.some((d) => !diffs.has(d))) return { error: "A key differentiator isn't in the list." };
+  const listOf = (name: string, saved: string[]) => new Set([...lists.filter((l) => l.field_name === name).map((l) => l.value), ...saved]);
+  const savedC = existing?.criteria ?? EMPTY_CRITERIA;
+  if (input.criteria.company_types.some((v) => !listOf("company_type", savedC.company_types).has(v))) return { error: "A company type isn't in the list." };
+  if (input.criteria.property_types.some((v) => !listOf("property_type", savedC.property_types).has(v))) return { error: "A property type isn't in the list." };
+  if (input.criteria.countries.some((v) => !listOf("country", savedC.countries).has(v))) return { error: "A country isn't in the list." };
 
   return { value: { visibility: input.visibility, team_id: teamId, owner_id: ownerId } };
 }
@@ -174,6 +198,27 @@ export const canManageCampaign = (actor: Actor | null | undefined, ownerId: stri
   !!actor && (actor.role === "super_admin" || (ownerId !== null && String(ownerId) === String(actor.id)));
 
 // ---------------- campaigns ----------------
+// The target-audience columns, and how they map to Criteria.
+export type CriteriaColumns = {
+  target_company_types: string[];
+  target_property_types: string[];
+  rooms_min: number | null;
+  rooms_max: number | null;
+  target_portfolio: string;
+  target_countries: string[];
+  target_states: string[];
+};
+const CRITERIA_COLUMNS = "k.target_company_types, k.target_property_types, k.rooms_min, k.rooms_max, k.target_portfolio, k.target_countries, k.target_states";
+export const criteriaOf = (r: CriteriaColumns): Criteria => ({
+  company_types: r.target_company_types,
+  property_types: r.target_property_types,
+  rooms_min: r.rooms_min,
+  rooms_max: r.rooms_max,
+  portfolio: (r.target_portfolio === "independent" || r.target_portfolio === "portfolio" ? r.target_portfolio : "any") as Portfolio,
+  countries: r.target_countries,
+  states: r.target_states,
+});
+
 export type CampaignRow = {
   id: string;
   code: string;
@@ -187,6 +232,7 @@ export type CampaignRow = {
   step_count: number;
   active_enrollments: number;
   created_at: Date;
+  audience: string;
   can_manage: boolean;
 };
 
@@ -196,8 +242,9 @@ export async function fetchCampaignList(actor: Actor): Promise<CampaignRow[]> {
     params.push(v);
     return `$${params.length}`;
   };
-  const rows = await query<Omit<CampaignRow, "can_manage">>(
+  const rows = await query<Omit<CampaignRow, "can_manage" | "audience"> & CriteriaColumns>(
     `SELECT k.id, k.code, k.name, k.description, k.status, k.visibility, k.created_at, k.owner_id, ou.name AS owner_name, t.name AS team_name,
+            ${CRITERIA_COLUMNS},
             (SELECT count(*)::int FROM campaign_steps s WHERE s.campaign_id = k.id) AS step_count,
             (SELECT count(*)::int FROM campaign_enrollments e JOIN companies c ON c.id = e.company_id AND c.deleted_at IS NULL
               WHERE e.campaign_id = k.id AND e.status = 'active' AND ${visibleSql(actor, "c", add)}) AS active_enrollments
@@ -208,7 +255,7 @@ export async function fetchCampaignList(actor: Actor): Promise<CampaignRow[]> {
       ORDER BY (k.status = 'active') DESC, (k.status = 'paused') DESC, (k.status = 'draft') DESC, k.created_at DESC`,
     params
   );
-  return rows.map((r) => ({ ...r, can_manage: canManageCampaign(actor, r.owner_id) }));
+  return rows.map((r) => ({ ...r, audience: audienceSummary(criteriaOf(r)), can_manage: canManageCampaign(actor, r.owner_id) }));
 }
 
 export type CampaignStep = { id?: string; day_number: number; channel: string; title: string; instructions: string };
@@ -235,6 +282,7 @@ export type CampaignWithSteps = {
   copied_from_code: string | null;
   steps: CampaignStep[];
   playbook: Playbook;
+  criteria: Criteria;
   can_manage: boolean;
   running: number; // running enrollments (all of them, for the completed banner)
 };
@@ -245,10 +293,10 @@ export async function fetchCampaign(id: string, actor: Actor): Promise<CampaignW
     params.push(v);
     return `$${params.length}`;
   };
-  const [row] = await query<Omit<CampaignWithSteps, "steps" | "playbook" | "can_manage"> & Playbook>(
+  const [row] = await query<Omit<CampaignWithSteps, "steps" | "playbook" | "can_manage" | "criteria"> & Playbook & CriteriaColumns>(
     `SELECT k.id, k.code, k.name, k.description, k.status, k.visibility, k.team_id, t.name AS team_name, k.owner_id, ou.name AS owner_name,
             k.copied_from, src.code AS copied_from_code,
-            k.outreach_angle, k.pain_point, k.secondary_pains, k.positioning, k.differentiators,
+            k.outreach_angle, k.pain_point, k.secondary_pains, k.positioning, k.differentiators, ${CRITERIA_COLUMNS},
             (SELECT count(*)::int FROM campaign_enrollments e WHERE e.campaign_id = k.id AND e.status = 'active') AS running
        FROM campaigns k
        LEFT JOIN users ou ON ou.id = k.owner_id
@@ -262,9 +310,10 @@ export async function fetchCampaign(id: string, actor: Actor): Promise<CampaignW
     query<CampaignStep>("SELECT id, day_number, channel, title, instructions FROM campaign_steps WHERE campaign_id = $1 ORDER BY position", [id]),
     query<ObjectionInput>("SELECT objection, response FROM campaign_objections WHERE campaign_id = $1 ORDER BY position", [id]),
   ]);
-  const { outreach_angle, pain_point, secondary_pains, positioning, differentiators, ...rest } = row;
+  const { outreach_angle, pain_point, secondary_pains, positioning, differentiators, target_company_types, target_property_types, rooms_min, rooms_max, target_portfolio, target_countries, target_states, ...rest } = row;
   return {
     ...rest,
+    criteria: criteriaOf({ target_company_types, target_property_types, rooms_min, rooms_max, target_portfolio, target_countries, target_states }),
     steps,
     playbook: { outreach_angle, pain_point, secondary_pains, positioning, differentiators, objections },
     can_manage: canManageCampaign(actor, row.owner_id),
@@ -335,6 +384,7 @@ export type EnrollmentRow = {
   campaign_id: string;
   campaign_name: string;
   campaign_status: string;
+  fit_label: "strong" | "partial" | "weak" | null;
   recipient_type: "contact" | "company";
   contact_id: string | null;
   recipient_label: string;
@@ -348,7 +398,7 @@ export type EnrollmentRow = {
 
 export async function fetchCompanyEnrollments(companyId: number): Promise<EnrollmentRow[]> {
   const enrollments = await query<Omit<EnrollmentRow, "tasks">>(
-    `SELECT e.id, e.campaign_id, k.name AS campaign_name, k.status AS campaign_status, e.recipient_type, e.contact_id, e.recipient_label,
+    `SELECT e.id, e.campaign_id, k.name AS campaign_name, k.status AS campaign_status, e.fit_label, e.recipient_type, e.contact_id, e.recipient_label,
             to_char(e.start_date, 'YYYY-MM-DD') AS start_date, e.status, e.stop_note,
             su.name AS stopped_by_name, eu.name AS enrolled_by_name
        FROM campaign_enrollments e

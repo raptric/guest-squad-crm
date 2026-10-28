@@ -40,6 +40,7 @@ import { getCurrentUser } from "@/lib/current-user";
 import { canViewCompany } from "@/lib/visibility";
 import { assignableUsers, canAssign } from "@/lib/assignment";
 import { fetchOpenCampaigns, fetchCompanyEnrollments, fetchPlaybooks } from "@/lib/campaigns";
+import { fetchFitForCompany } from "@/lib/campaign-fit";
 import { todayUtc } from "@/lib/campaigns-format";
 import { CampaignCard } from "./campaign-card";
 import { PipelineEditor } from "./pipeline-editor";
@@ -211,7 +212,7 @@ export default async function CompanyDetailPage({
   const ready = eligibility.ok;
   const mayEnroll = ready && isOwner;
   const [enrollments, campaigns] = await Promise.all([fetchCompanyEnrollments(companyId), mayEnroll && actor ? fetchOpenCampaigns(actor) : Promise.resolve([])]);
-  const playbooks = await fetchPlaybooks(enrollments.map((e) => e.campaign_id));
+  const [playbooks, fits] = await Promise.all([fetchPlaybooks(enrollments.map((e) => e.campaign_id)), fetchFitForCompany(companyId, campaigns.map((c) => c.id))]);
   const canActOnTasks =
     !!actor &&
     (actor.role === "super_admin" ||
@@ -565,7 +566,7 @@ export default async function CompanyDetailPage({
                 canAct={canActOnTasks}
                 enrollments={enrollments}
                 playbooks={playbooks}
-                campaigns={campaigns}
+                campaigns={campaigns.map((c) => ({ ...c, fit: fits[c.id] ?? null }))}
                 recipients={contacts.map((c) => {
                   const email = forThisCompany(c.contact_emails)[0]?.email;
                   const name = `${c.first_name} ${c.last_name ?? ""}`.trim();

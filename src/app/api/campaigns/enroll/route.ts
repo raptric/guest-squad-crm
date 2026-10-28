@@ -3,6 +3,7 @@ import { getCurrentUser } from "@/lib/current-user";
 import { query, withTransaction, isUniqueViolation } from "@/lib/db";
 import { checkEnrollable, fetchEnrollmentRule } from "@/lib/campaign-rule";
 import { campaignVisibleSql } from "@/lib/campaigns";
+import { fetchFitForCompany } from "@/lib/campaign-fit";
 
 const fail = (error: string, status = 400) => NextResponse.json({ error }, { status });
 
@@ -111,13 +112,15 @@ export async function POST(request: Request) {
   if (startMs < todayUtc - dayMs) return fail("The start date can't be in the past.");
   if (startMs > todayUtc + 90 * dayMs) return fail("The start date can be at most 90 days from now.");
 
+  const fit = (await fetchFitForCompany(companyId, [campaignId]))[String(campaignId)];
+
   try {
     const result = await withTransaction(async (client) => {
       const enrollment = (
         await client.query(
-          `INSERT INTO campaign_enrollments (campaign_id, company_id, recipient_type, contact_id, recipient_label, start_date, enrolled_by)
-           VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
-          [campaignId, companyId, recipient.type, contactId, recipientLabel, start, actor.id]
+          `INSERT INTO campaign_enrollments (campaign_id, company_id, recipient_type, contact_id, recipient_label, start_date, enrolled_by, fit_label, fit_detail)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
+          [campaignId, companyId, recipient.type, contactId, recipientLabel, start, actor.id, fit?.label ?? null, fit ? JSON.stringify(fit.lines) : null]
         )
       ).rows[0];
       for (const s of steps) {

@@ -57,6 +57,7 @@ export default async function CampaignsPage() {
                     <Link href={`/campaigns/${c.id}`} className="font-semibold text-sky-700 hover:underline">
                       {c.name}
                     </Link>
+                    {c.audience && <p className="mt-0.5 text-xs font-medium text-violet-700">{c.audience}</p>}
                     {c.description && <p className="mt-0.5 line-clamp-2 text-xs text-zinc-500">{c.description}</p>}
                   </td>
                   <td className="px-3 py-4">
@@ -77,6 +78,9 @@ export default async function CampaignsPage() {
                       <div className="flex justify-end gap-2">
                         <Link href={`/campaigns/${c.id}`} className="rounded-lg border border-zinc-300 px-2.5 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-50">
                           {c.can_manage && c.status !== "completed" ? "Edit" : "View"}
+                        </Link>
+                        <Link href={`/campaigns/${c.id}/fit`} className="rounded-lg border border-zinc-300 px-2.5 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-50">
+                          Fit list
                         </Link>
                         <DuplicateButton id={c.id} />
                       </div>

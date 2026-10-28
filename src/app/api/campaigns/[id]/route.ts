@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/current-user";
 import { query } from "@/lib/db";
-import { activationError, canManageCampaign, parseCampaignInput, resolveCampaignInput } from "@/lib/campaigns";
+import { activationError, canManageCampaign, criteriaOf, parseCampaignInput, resolveCampaignInput, type CriteriaColumns } from "@/lib/campaigns";
 import { updateCampaign } from "@/lib/campaign-save";
 
 const fail = (error: string, status = 400) => NextResponse.json({ error }, { status });
@@ -22,7 +22,11 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     outreach_angle: string | null;
     secondary_pains: string[];
     differentiators: string[];
-  }>("SELECT status, visibility, team_id, owner_id, outreach_angle, secondary_pains, differentiators FROM campaigns WHERE id = $1", [id]);
+  } & CriteriaColumns>(
+    `SELECT status, visibility, team_id, owner_id, outreach_angle, secondary_pains, differentiators,
+            target_company_types, target_property_types, rooms_min, rooms_max, target_portfolio, target_countries, target_states FROM campaigns WHERE id = $1`,
+    [id]
+  );
   // Anyone who can't manage it gets the same answer as for a campaign that doesn't exist.
   if (!existing || !canManageCampaign(actor, existing.owner_id)) return fail("Campaign not found", 404);
   if (existing.status === "completed") return fail("A completed campaign can't be edited. Duplicate it to run it again.", 409);
@@ -34,7 +38,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     const problem = activationError(input);
     if (problem) return fail(problem);
   }
-  const resolved = await resolveCampaignInput(actor, input, existing);
+  const resolved = await resolveCampaignInput(actor, input, { ...existing, criteria: criteriaOf(existing) });
   if ("error" in resolved) return fail(resolved.error);
 
   await updateCampaign(Number(id), input, resolved.value);
