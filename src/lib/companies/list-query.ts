@@ -183,7 +183,7 @@ export async function fetchFacets(actor: Actor | null | undefined): Promise<Face
   const params: unknown[] = [];
   const add = (v: unknown) => {
     params.push(v);
-    return `${params.length}`;
+    return `$${params.length}`;
   };
   const vis = visibleSql(actor, "c", add);
   const isAdmin = actor?.role === "super_admin";

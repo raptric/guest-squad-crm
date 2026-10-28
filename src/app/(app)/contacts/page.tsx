@@ -54,7 +54,7 @@ export default async function ContactsPage({
   const where = ["k.deleted_at IS NULL", contactVisibleSql(actor, "k", add)];
   const term = q?.trim();
   if (term) {
-    const p = add(`%${term.replace(/[\%_]/g, "\$&")}%`);
+    const p = add(`%${term.replace(/[\\%_]/g, "\\$&")}%`);
     where.push(`(k.first_name ILIKE ${p} OR k.last_name ILIKE ${p}
       OR EXISTS (SELECT 1 FROM contact_emails e WHERE e.contact_id = k.id AND e.email ILIKE ${p})
       OR EXISTS (SELECT 1 FROM contact_companies t WHERE t.contact_id = k.id AND t.job_title ILIKE ${p}))`);
