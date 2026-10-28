@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowDownIcon, ArrowUpIcon, PlusIcon, TrashIcon } from "../icons";
 import { CHANNELS, VISIBILITY_LABEL, type Visibility } from "@/lib/campaigns-format";
-import { PORTFOLIO_LABEL, type Criteria, type Portfolio } from "@/lib/campaign-fit-format";
+import type { Criteria } from "@/lib/campaign-fit-format";
 
 type Step = { key: number; day_number: string; channel: string; title: string; instructions: string };
 type Objection = { key: number; objection: string; response: string };
@@ -28,7 +28,7 @@ export type CampaignFormInitial = {
   criteria: Criteria;
 };
 
-type Lists = { angles: string[]; differentiators: string[]; companyTypes: string[]; propertyTypes: string[]; countries: string[]; states: string[] };
+type Lists = { angles: string[]; differentiators: string[]; companyTypes: string[]; propertyTypes: string[]; countries: string[] };
 type Preview = { strong: number; partial: number; weak: number; total: number };
 type Viewer = { role: string; teamId: string | null; teamName: string | null; id: string; name: string };
 
@@ -60,26 +60,27 @@ export function CampaignForm({
   const [teamId, setTeamId] = useState(initial?.team_id ?? teams[0]?.id ?? "");
   const [ownerId, setOwnerId] = useState(initial?.owner_id ?? viewer.id);
   const [status, setStatus] = useState<"draft" | "active">("draft");
-  // Target audience (every criterion is optional). New campaigns start with Property ticked.
-  const [companyTypes, setCompanyTypes] = useState<string[]>(initial ? initial.criteria.company_types : lists.companyTypes.includes("Property") ? ["Property"] : []);
+  // Target audience (every criterion is optional). New campaigns start on Property. The property fields only exist for Property.
+  const [companyType, setCompanyType] = useState<string>(initial ? initial.criteria.company_types[0] ?? "" : lists.companyTypes.includes("Property") ? "Property" : "");
   const [propertyTypes, setPropertyTypes] = useState<string[]>(initial?.criteria.property_types ?? []);
   const [roomsMin, setRoomsMin] = useState(initial?.criteria.rooms_min?.toString() ?? "");
   const [roomsMax, setRoomsMax] = useState(initial?.criteria.rooms_max?.toString() ?? "");
-  const [portfolio, setPortfolio] = useState<Portfolio>(initial?.criteria.portfolio ?? "any");
+  const [indep, setIndep] = useState(initial ? initial.criteria.portfolio !== "portfolio" : true);
+  const [port, setPort] = useState(initial ? initial.criteria.portfolio !== "independent" : true);
   const [countries, setCountries] = useState<string[]>(initial?.criteria.countries ?? []);
-  const [states, setStates] = useState<string[]>(initial?.criteria.states ?? []);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [previewing, setPreviewing] = useState(false);
+  const isProperty = companyType === "Property";
   const criteria: Criteria = {
-    company_types: companyTypes,
-    property_types: propertyTypes,
-    rooms_min: roomsMin === "" ? null : Number(roomsMin),
-    rooms_max: roomsMax === "" ? null : Number(roomsMax),
-    portfolio,
+    company_types: companyType ? [companyType] : [],
+    property_types: isProperty ? propertyTypes : [],
+    rooms_min: isProperty && roomsMin !== "" ? Number(roomsMin) : null,
+    rooms_max: isProperty && roomsMax !== "" ? Number(roomsMax) : null,
+    portfolio: isProperty && indep !== port ? (indep ? "independent" : "portfolio") : "any",
     countries,
-    states,
   };
-  const hasCriteria = companyTypes.length > 0 || propertyTypes.length > 0 || roomsMin !== "" || roomsMax !== "" || portfolio !== "any" || countries.length > 0 || states.length > 0;
+  const hasCriteria =
+    criteria.company_types.length > 0 || criteria.property_types.length > 0 || criteria.rooms_min !== null || criteria.rooms_max !== null || criteria.portfolio !== "any" || criteria.countries.length > 0;
   const criteriaKey = JSON.stringify(criteria);
 
   // Live preview: how many companies you could enroll right now would fit, for the criteria as they stand.
@@ -176,6 +177,7 @@ export function CampaignForm({
 
   return (
     <form onSubmit={save} className="space-y-6">
+      <div className="grid items-start gap-6 lg:grid-cols-2">
       <section className="space-y-4 rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
         <div className="flex items-center justify-between gap-3">
           <h2 className="text-base font-semibold text-zinc-900">Identity</h2>
@@ -258,51 +260,55 @@ export function CampaignForm({
       <section className="space-y-4 rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
         <div>
           <h2 className="text-base font-semibold text-zinc-900">Target audience</h2>
-          <p className="text-sm text-zinc-500">Who this campaign is for. Every field is optional: leave it empty if it doesn&apos;t matter. When someone enrolls a company, they see how well it fits.</p>
+          <p className="text-sm text-zinc-500">Who this campaign is for. Every field is optional. When someone enrolls a company, they see how well it fits.</p>
         </div>
 
-        <fieldset className="space-y-1.5">
-          <legend className="text-sm font-medium text-zinc-700">Company type</legend>
-          <Checks options={lists.companyTypes} selected={companyTypes} onToggle={(v) => toggle(companyTypes, setCompanyTypes, v)} empty="No company types in Settings." />
-        </fieldset>
-        <fieldset className="space-y-1.5">
-          <legend className="text-sm font-medium text-zinc-700">Property type <span className="font-normal text-zinc-400">(properties only)</span></legend>
-          <Checks options={lists.propertyTypes} selected={propertyTypes} onToggle={(v) => toggle(propertyTypes, setPropertyTypes, v)} empty="No property types in Settings." />
-        </fieldset>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-1">
-            <span className="text-sm font-medium text-zinc-700">Rooms <span className="font-normal text-zinc-400">(properties only)</span></span>
-            <div className="flex items-center gap-2">
-              <input type="number" min={0} max={100000} value={roomsMin} onChange={(e) => setRoomsMin(e.target.value)} placeholder="Min" className={field} aria-label="Minimum rooms" />
-              <span className="text-zinc-400">to</span>
-              <input type="number" min={0} max={100000} value={roomsMax} onChange={(e) => setRoomsMax(e.target.value)} placeholder="Max" className={field} aria-label="Maximum rooms" />
+        <label className="block space-y-1">
+          <span className="text-sm font-medium text-zinc-700">Company type</span>
+          <select value={companyType} onChange={(e) => setCompanyType(e.target.value)} className={field}>
+            <option value="">Any company type</option>
+            {withSaved(lists.companyTypes, companyType ? [companyType] : []).map((t) => (
+              <option key={t}>{t}</option>
+            ))}
+          </select>
+        </label>
+
+        {isProperty && (
+          <div className="space-y-4 rounded-xl border border-dashed border-zinc-300 p-4">
+            <p className="text-xs font-medium uppercase tracking-wide text-zinc-400">Property</p>
+            <div className="space-y-1.5">
+              <span className="text-sm font-medium text-zinc-700">Property type</span>
+              <PickMany options={withSaved(lists.propertyTypes, propertyTypes)} selected={propertyTypes} onChange={setPropertyTypes} placeholder="Any property type" empty="No property types in Settings." />
             </div>
-          </div>
-          <fieldset className="space-y-1">
-            <legend className="text-sm font-medium text-zinc-700">Portfolio <span className="font-normal text-zinc-400">(properties only)</span></legend>
-            <div className="flex flex-wrap gap-x-4 gap-y-1">
-              {(["any", "independent", "portfolio"] as const).map((p) => (
-                <label key={p} className="flex cursor-pointer items-center gap-1.5 text-sm text-zinc-700">
-                  <input type="radio" name="portfolio" checked={portfolio === p} onChange={() => setPortfolio(p)} />
-                  {PORTFOLIO_LABEL[p]}
+            <div className="space-y-1">
+              <span className="text-sm font-medium text-zinc-700">Rooms</span>
+              <div className="flex items-center gap-2">
+                <input type="number" min={0} max={100000} value={roomsMin} onChange={(e) => setRoomsMin(e.target.value)} placeholder="Min" className={field} aria-label="Minimum rooms" />
+                <span className="text-zinc-400">to</span>
+                <input type="number" min={0} max={100000} value={roomsMax} onChange={(e) => setRoomsMax(e.target.value)} placeholder="Max" className={field} aria-label="Maximum rooms" />
+              </div>
+            </div>
+            <fieldset className="space-y-1">
+              <legend className="text-sm font-medium text-zinc-700">Portfolio</legend>
+              <div className="flex flex-wrap gap-x-5 gap-y-1">
+                <label className="flex cursor-pointer items-center gap-1.5 text-sm text-zinc-700">
+                  <input type="checkbox" checked={indep} disabled={indep && !port} onChange={(e) => setIndep(e.target.checked)} />
+                  Independent
                 </label>
-              ))}
-            </div>
-          </fieldset>
+                <label className="flex cursor-pointer items-center gap-1.5 text-sm text-zinc-700">
+                  <input type="checkbox" checked={port} disabled={port && !indep} onChange={(e) => setPort(e.target.checked)} />
+                  Part of a portfolio
+                </label>
+              </div>
+              <p className="text-xs text-zinc-500">Both ticked means either. Untick one to leave that kind out.</p>
+            </fieldset>
+          </div>
+        )}
+
+        <div className="space-y-1.5">
+          <span className="text-sm font-medium text-zinc-700">Country <span className="font-normal text-zinc-400">(optional)</span></span>
+          <PickMany options={withSaved(lists.countries, countries)} selected={countries} onChange={setCountries} placeholder="Any country" empty="No countries in Settings." />
         </div>
-        <fieldset className="space-y-1.5">
-          <legend className="text-sm font-medium text-zinc-700">Location <span className="font-normal text-zinc-400">(optional)</span></legend>
-          <p className="text-xs text-zinc-500">Country</p>
-          <PickMany
-            options={withSaved(lists.countries, countries)}
-            selected={countries}
-            onChange={setCountries}
-            placeholder="Any country"
-            empty="No countries in Settings."
-          />
-          <p className="pt-1 text-xs text-zinc-500">State / region, written as it appears in your data. Add every spelling you want to include.</p>
-          <PickMany options={withSaved(lists.states, states)} selected={states} onChange={setStates} placeholder="Any state" empty="No states in the data yet." />
-        </fieldset>
 
         <div className="rounded-xl bg-zinc-50 px-4 py-3 text-sm text-zinc-700">
           {!hasCriteria ? (
@@ -317,6 +323,7 @@ export function CampaignForm({
           )}
         </div>
       </section>
+      </div>
 
       <section className="space-y-4 rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
         <div>

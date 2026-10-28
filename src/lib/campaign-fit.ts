@@ -41,14 +41,9 @@ export const FIT_JOIN = `
           CASE WHEN k.target_portfolio = 'any' THEN NULL
                WHEN c.company_type <> 'Property' THEN 'na'
                WHEN ${IS_INDEPENDENT_SQL} = (k.target_portfolio = 'independent') THEN 'match' ELSE 'miss' END AS portfolio,
-          (SELECT CASE WHEN 'miss' IN (y.cr, y.sr) THEN 'miss'
-                       WHEN 'unknown' IN (y.cr, y.sr) THEN 'unknown'
-                       WHEN y.cr IS NULL AND y.sr IS NULL THEN NULL
-                       ELSE 'match' END
-             FROM (SELECT CASE WHEN cardinality(k.target_countries) = 0 THEN NULL WHEN c.country IS NULL THEN 'unknown'
-                               WHEN c.country = ANY(k.target_countries) THEN 'match' ELSE 'miss' END AS cr,
-                          CASE WHEN cardinality(k.target_states) = 0 THEN NULL WHEN c.state IS NULL THEN 'unknown'
-                               WHEN c.state = ANY(k.target_states) THEN 'match' ELSE 'miss' END AS sr) y) AS location
+          CASE WHEN cardinality(k.target_countries) = 0 THEN NULL
+               WHEN c.country IS NULL THEN 'unknown'
+               WHEN c.country = ANY(k.target_countries) THEN 'match' ELSE 'miss' END AS location
       ) x
   ) r`;
 
@@ -56,15 +51,14 @@ export const FIT_JOIN = `
 export const FIT_COLUMNS = `
   r.ct, r.pt, r.rooms, r.portfolio, r.location, r.misses, r.unknowns, r.has_criteria,
   CASE WHEN NOT r.has_criteria THEN NULL WHEN r.misses = 0 THEN 'strong' WHEN r.misses = 1 THEN 'partial' ELSE 'weak' END AS fit,
-  c.company_type, pd.property_type, pd.rooms_units, ${IS_INDEPENDENT_SQL} AS is_independent, c.country, c.state,
-  k.target_company_types, k.target_property_types, k.rooms_min, k.rooms_max, k.target_portfolio, k.target_countries, k.target_states`;
+  c.company_type, pd.property_type, pd.rooms_units, ${IS_INDEPENDENT_SQL} AS is_independent, c.country,
+  k.target_company_types, k.target_property_types, k.rooms_min, k.rooms_max, k.target_portfolio, k.target_countries`;
 
 // A one-row stand-in for the campaigns table, for criteria that haven't been saved yet (the form's live preview).
 export const criteriaSource = (firstParam: number) =>
   `(SELECT $${firstParam}::text[] AS target_company_types, $${firstParam + 1}::text[] AS target_property_types, $${firstParam + 2}::int AS rooms_min,
-           $${firstParam + 3}::int AS rooms_max, $${firstParam + 4}::text AS target_portfolio, $${firstParam + 5}::text[] AS target_countries,
-           $${firstParam + 6}::text[] AS target_states) k`;
-export const criteriaParams = (c: Criteria) => [c.company_types, c.property_types, c.rooms_min, c.rooms_max, c.portfolio, c.countries, c.states];
+           $${firstParam + 3}::int AS rooms_max, $${firstParam + 4}::text AS target_portfolio, $${firstParam + 5}::text[] AS target_countries) k`;
+export const criteriaParams = (c: Criteria) => [c.company_types, c.property_types, c.rooms_min, c.rooms_max, c.portfolio, c.countries];
 
 // "Ready to enroll", from the same Settings rule the enroll route checks (checkEnrollable): verified? allowed
 // status / stage combinations? Entries pointing at a switched-off status / stage are ignored, as there.
@@ -169,7 +163,7 @@ export async function fetchFitList(
     query<{ fit: FitLabel | null; n: number }>(`SELECT ${fitExpr} AS fit, count(*)::int AS n ${base} GROUP BY 1`, params),
     query<{ has_criteria: boolean }>(
       `SELECT (cardinality(k.target_company_types) > 0 OR cardinality(k.target_property_types) > 0 OR k.rooms_min IS NOT NULL OR k.rooms_max IS NOT NULL
-               OR k.target_portfolio <> 'any' OR cardinality(k.target_countries) > 0 OR cardinality(k.target_states) > 0) AS has_criteria
+               OR k.target_portfolio <> 'any' OR cardinality(k.target_countries) > 0) AS has_criteria
          FROM campaigns k WHERE k.id = $1`,
       [campaignId]
     ),

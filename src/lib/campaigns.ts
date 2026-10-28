@@ -88,13 +88,13 @@ export function parseCampaignInput(body: unknown): { value: CampaignInput } | { 
   for (const r of [roomsMin, roomsMax]) if (r !== null && (!Number.isInteger(r) || r < 0 || r > 100000)) return { error: "Rooms must be whole numbers from 0 to 100,000." };
   if (roomsMin !== null && roomsMax !== null && roomsMin > roomsMax) return { error: "The minimum rooms can't be above the maximum." };
   const criteria: Criteria = {
-    company_types: strings(crit.company_types, 20),
+    // a campaign aims at one kind of company
+    company_types: strings(crit.company_types, 1),
     property_types: strings(crit.property_types, 30),
     rooms_min: roomsMin,
     rooms_max: roomsMax,
     portfolio: (["independent", "portfolio"].includes(String(crit.portfolio)) ? crit.portfolio : "any") as Portfolio,
     countries: strings(crit.countries, 40),
-    states: strings(crit.states, 80).filter((s) => s.length <= 120),
   };
 
   const visibility = b.visibility === "team" || b.visibility === "public" ? b.visibility : "private";
@@ -206,9 +206,8 @@ export type CriteriaColumns = {
   rooms_max: number | null;
   target_portfolio: string;
   target_countries: string[];
-  target_states: string[];
 };
-const CRITERIA_COLUMNS = "k.target_company_types, k.target_property_types, k.rooms_min, k.rooms_max, k.target_portfolio, k.target_countries, k.target_states";
+const CRITERIA_COLUMNS = "k.target_company_types, k.target_property_types, k.rooms_min, k.rooms_max, k.target_portfolio, k.target_countries";
 export const criteriaOf = (r: CriteriaColumns): Criteria => ({
   company_types: r.target_company_types,
   property_types: r.target_property_types,
@@ -216,7 +215,6 @@ export const criteriaOf = (r: CriteriaColumns): Criteria => ({
   rooms_max: r.rooms_max,
   portfolio: (r.target_portfolio === "independent" || r.target_portfolio === "portfolio" ? r.target_portfolio : "any") as Portfolio,
   countries: r.target_countries,
-  states: r.target_states,
 });
 
 export type CampaignRow = {
@@ -310,10 +308,10 @@ export async function fetchCampaign(id: string, actor: Actor): Promise<CampaignW
     query<CampaignStep>("SELECT id, day_number, channel, title, instructions FROM campaign_steps WHERE campaign_id = $1 ORDER BY position", [id]),
     query<ObjectionInput>("SELECT objection, response FROM campaign_objections WHERE campaign_id = $1 ORDER BY position", [id]),
   ]);
-  const { outreach_angle, pain_point, secondary_pains, positioning, differentiators, target_company_types, target_property_types, rooms_min, rooms_max, target_portfolio, target_countries, target_states, ...rest } = row;
+  const { outreach_angle, pain_point, secondary_pains, positioning, differentiators, target_company_types, target_property_types, rooms_min, rooms_max, target_portfolio, target_countries, ...rest } = row;
   return {
     ...rest,
-    criteria: criteriaOf({ target_company_types, target_property_types, rooms_min, rooms_max, target_portfolio, target_countries, target_states }),
+    criteria: criteriaOf({ target_company_types, target_property_types, rooms_min, rooms_max, target_portfolio, target_countries }),
     steps,
     playbook: { outreach_angle, pain_point, secondary_pains, positioning, differentiators, objections },
     can_manage: canManageCampaign(actor, row.owner_id),

@@ -26,7 +26,7 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
   const data = editable ? await loadCampaignFormData(user) : null;
 
   return (
-    <div className="mx-auto w-full max-w-4xl space-y-6 p-6 lg:p-8">
+    <div className="mx-auto w-full max-w-6xl space-y-6 p-6 lg:p-8">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <Link href="/campaigns" className="text-sm text-zinc-500 hover:text-zinc-800">

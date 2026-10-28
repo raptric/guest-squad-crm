@@ -24,7 +24,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     differentiators: string[];
   } & CriteriaColumns>(
     `SELECT status, visibility, team_id, owner_id, outreach_angle, secondary_pains, differentiators,
-            target_company_types, target_property_types, rooms_min, rooms_max, target_portfolio, target_countries, target_states FROM campaigns WHERE id = $1`,
+            target_company_types, target_property_types, rooms_min, rooms_max, target_portfolio, target_countries FROM campaigns WHERE id = $1`,
     [id]
   );
   // Anyone who can't manage it gets the same answer as for a campaign that doesn't exist.

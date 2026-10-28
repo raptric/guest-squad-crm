@@ -12,7 +12,7 @@ export default async function NewCampaignPage() {
   const data = await loadCampaignFormData(user);
 
   return (
-    <div className="mx-auto w-full max-w-4xl space-y-6 p-6 lg:p-8">
+    <div className="mx-auto w-full max-w-6xl space-y-6 p-6 lg:p-8">
       <div>
         <Link href="/campaigns" className="text-sm text-zinc-500 hover:text-zinc-800">
           &larr; Back to Campaigns

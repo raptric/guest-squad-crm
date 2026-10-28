@@ -9,9 +9,8 @@ export type Criteria = {
   rooms_max: number | null;
   portfolio: Portfolio;
   countries: string[];
-  states: string[];
 };
-export const EMPTY_CRITERIA: Criteria = { company_types: [], property_types: [], rooms_min: null, rooms_max: null, portfolio: "any", countries: [], states: [] };
+export const EMPTY_CRITERIA: Criteria = { company_types: [], property_types: [], rooms_min: null, rooms_max: null, portfolio: "any", countries: [] };
 export const PORTFOLIO_LABEL: Record<string, string> = { any: "Any", independent: "Independent", portfolio: "Part of a portfolio" };
 
 export type FitLabel = "strong" | "partial" | "weak";
@@ -43,7 +42,6 @@ export type FitRow = {
   rooms_units: number | null;
   is_independent: boolean;
   country: string | null;
-  state: string | null;
   // the campaign's criteria, for the explanation
   target_company_types: string[];
   target_property_types: string[];
@@ -51,7 +49,6 @@ export type FitRow = {
   rooms_max: number | null;
   target_portfolio: string;
   target_countries: string[];
-  target_states: string[];
 };
 
 const roomsRange = (min: number | null, max: number | null) => (min !== null && max !== null ? `${min}–${max}` : min !== null ? `${min}+` : `up to ${max}`);
@@ -71,12 +68,7 @@ export function describeFit(r: FitRow): Fit {
   add("Property type", r.pt, r.property_type, r.target_property_types.join(", "));
   add("Rooms", r.rooms, r.rooms_units === null ? null : String(r.rooms_units), roomsRange(r.rooms_min, r.rooms_max));
   add("Portfolio", r.portfolio, r.is_independent ? "Independent" : "Part of a portfolio", PORTFOLIO_LABEL[r.target_portfolio] ?? r.target_portfolio);
-  add(
-    "Location",
-    r.location,
-    [r.state, r.country].filter(Boolean).join(", "),
-    [...r.target_states, ...r.target_countries].join(", ")
-  );
+  add("Country", r.location, r.country, r.target_countries.join(", "));
   return { label: r.has_criteria ? r.fit : null, misses: r.misses, unknowns: r.unknowns, lines };
 }
 
@@ -86,7 +78,7 @@ export function audienceSummary(c: Criteria): string {
   if (c.company_types.length) parts.push(c.company_types.join(", "));
   if (c.property_types.length) parts.push(c.property_types.join(", "));
   if (c.rooms_min !== null || c.rooms_max !== null) parts.push(`${roomsRange(c.rooms_min, c.rooms_max)} rooms`);
-  if (c.states.length || c.countries.length) parts.push([...c.states, ...c.countries].join(", "));
+  if (c.countries.length) parts.push(c.countries.join(", "));
   if (c.portfolio !== "any") parts.push(PORTFOLIO_LABEL[c.portfolio]);
   return parts.join(" · ");
 }
