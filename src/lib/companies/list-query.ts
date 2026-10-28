@@ -96,6 +96,9 @@ export function buildWhere(f: Filters, actor: Actor | null | undefined) {
   has("c.website", f.website);
   has("c.phone", f.phone);
   has("c.email", f.email);
+  // Contactless lives on the property profile: "yes" = ticked, "not_recorded" = everything else (including non-properties).
+  if (f.contactless === "yes") where.push("pd.contactless IS TRUE");
+  if (f.contactless === "not_recorded") where.push("pd.contactless IS NOT TRUE");
   if (f.contacts === "has") where.push(HAS_CONTACT);
   if (f.contacts === "missing") where.push(`NOT ${HAS_CONTACT}`);
 

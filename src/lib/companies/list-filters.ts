@@ -20,6 +20,11 @@ export const HAS_OPTIONS = [
   { value: "missing", label: "Missing" },
 ] as const;
 
+export const CONTACTLESS_OPTIONS = [
+  { value: "yes", label: "Contactless" },
+  { value: "not_recorded", label: "Not recorded" },
+] as const;
+
 export type Filters = {
   q: string;
   status: string[];
@@ -42,6 +47,7 @@ export type Filters = {
   phone: string;
   email: string;
   contacts: string;
+  contactless: string;
   roomsMin: string;
   roomsMax: string;
   ratingMin: string;
@@ -96,6 +102,7 @@ export function parseFilters(raw: Raw): Filters {
     phone: hasOpt("phone"),
     email: hasOpt("email"),
     contacts: hasOpt("contacts"),
+    contactless: oneOf(one(raw, "contactless"), CONTACTLESS_OPTIONS.map((o) => o.value)),
     roomsMin: intStr(one(raw, "roomsMin")),
     roomsMax: intStr(one(raw, "roomsMax")),
     ratingMin: numStr(one(raw, "ratingMin")),

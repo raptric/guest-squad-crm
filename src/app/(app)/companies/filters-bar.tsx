@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   HAS_OPTIONS,
+  CONTACTLESS_OPTIONS,
   NO_TIER,
   PORTFOLIO_OPTIONS,
   PRESETS,
@@ -95,6 +96,7 @@ export function FiltersBar({ facets, counts }: { facets: Facets; counts: { statu
   (["website", "phone", "email", "contacts"] as const).forEach((k) =>
     addOne(k, `${k[0].toUpperCase()}${k.slice(1)}: ${sp.get(k) === "has" ? "has" : "missing"}`)
   );
+  addOne("contactless", CONTACTLESS_OPTIONS.find((o) => o.value === sp.get("contactless"))?.label);
   addOne("roomsMin", `Rooms ≥ ${sp.get("roomsMin")}`);
   addOne("roomsMax", `Rooms ≤ ${sp.get("roomsMax")}`);
   addOne("ratingMin", `Google ≥ ${sp.get("ratingMin")}`);
@@ -252,6 +254,16 @@ export function FiltersBar({ facets, counts }: { facets: Facets; counts: { statu
               <Labeled label="Rooms min">{text("roomsMin", { type: "number" })}</Labeled>
               <Labeled label="Rooms max">{text("roomsMax", { type: "number" })}</Labeled>
             </div>
+            <Labeled label="Contactless">
+              <select className={input} value={sp.get("contactless") ?? ""} onChange={(e) => setOne("contactless", e.target.value)}>
+                <option value="">Any</option>
+                {CONTACTLESS_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </Labeled>
             <Labeled label="Google rating at least">{text("ratingMin", { type: "number", placeholder: "e.g. 4" })}</Labeled>
           </Column>
 
