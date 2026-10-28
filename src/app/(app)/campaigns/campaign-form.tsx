@@ -292,10 +292,16 @@ export function CampaignForm({
         </div>
         <fieldset className="space-y-1.5">
           <legend className="text-sm font-medium text-zinc-700">Location <span className="font-normal text-zinc-400">(optional)</span></legend>
-          <p className="text-xs text-zinc-500">Countries</p>
-          <Checks options={withSaved(lists.countries, countries)} selected={countries} onToggle={(v) => toggle(countries, setCountries, v)} empty="No countries in Settings." />
-          <p className="pt-1 text-xs text-zinc-500">States / regions, written as they appear in your data. Tick every spelling you want to include.</p>
-          <Checks options={withSaved(lists.states, states)} selected={states} onToggle={(v) => toggle(states, setStates, v)} empty="No states in the data yet." />
+          <p className="text-xs text-zinc-500">Country</p>
+          <PickMany
+            options={withSaved(lists.countries, countries)}
+            selected={countries}
+            onChange={setCountries}
+            placeholder="Any country"
+            empty="No countries in Settings."
+          />
+          <p className="pt-1 text-xs text-zinc-500">State / region, written as it appears in your data. Add every spelling you want to include.</p>
+          <PickMany options={withSaved(lists.states, states)} selected={states} onChange={setStates} placeholder="Any state" empty="No states in the data yet." />
         </fieldset>
 
         <div className="rounded-xl bg-zinc-50 px-4 py-3 text-sm text-zinc-700">
@@ -459,6 +465,42 @@ export function CampaignForm({
       </div>
       {initial && <p className="text-xs text-zinc-500">Changes to steps apply to companies enrolled from now on. Tasks that already exist keep the steps they were created with. The playbook is always the latest text.</p>}
     </form>
+  );
+}
+
+// A dropdown that adds to a list: leave it empty for "any", pick several to include them all. Picks show as removable chips.
+function PickMany({ options, selected, onChange, placeholder, empty }: { options: string[]; selected: string[]; onChange: (v: string[]) => void; placeholder: string; empty: string }) {
+  if (options.length === 0) return <p className="text-xs text-zinc-500">{empty}</p>;
+  const remaining = options.filter((o) => !selected.includes(o));
+  return (
+    <div className="space-y-2">
+      <select
+        value=""
+        onChange={(e) => e.target.value && onChange([...selected, e.target.value])}
+        disabled={remaining.length === 0}
+        className={`${field} max-w-xs`}
+        aria-label={placeholder}
+      >
+        <option value="">{selected.length ? "Add another…" : placeholder}</option>
+        {remaining.map((o) => (
+          <option key={o} value={o}>
+            {o}
+          </option>
+        ))}
+      </select>
+      {selected.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {selected.map((v) => (
+            <span key={v} className="inline-flex items-center gap-1 rounded-full border border-sky-500 bg-sky-50 py-0.5 pl-3 pr-1.5 text-sm text-sky-800">
+              {v}
+              <button type="button" aria-label={`Remove ${v}`} onClick={() => onChange(selected.filter((x) => x !== v))} className="grid h-5 w-5 place-items-center rounded-full text-sky-700 hover:bg-sky-100">
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
