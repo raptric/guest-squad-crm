@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { fetchPicklistValues } from "@/lib/picklists";
+import { getCurrentUser } from "@/lib/current-user";
+import { query as dbQuery } from "@/lib/db";
+import { visibleSql } from "@/lib/visibility";
 
 export async function GET(request: Request) {
   const supabase = await createClient();
@@ -21,22 +24,21 @@ export async function GET(request: Request) {
   const searchAll = searchParams.get("all") === "1";
   const searchTypes = searchAll ? allCompanyTypes : allCompanyTypes.filter((t) => t !== "Property");
 
-  let query = supabase
-    .from("companies")
-    .select("id, name, company_type")
-    .in("company_type", searchTypes)
-    .is("deleted_at", null)
-    .order("name")
-    .limit(10);
+  // Only companies this person may see.
+  const actor = await getCurrentUser();
+  const params: unknown[] = [searchTypes];
+  const add = (v: unknown) => {
+    params.push(v);
+    return `$${params.length}`;
+  };
+  const where = ["c.deleted_at IS NULL", "c.company_type = ANY($1)", visibleSql(actor, "c", add)];
+  if (q) where.push(`c.name ILIKE ${add(`%${q.replace(/[\\%_]/g, "\\$&")}%`)}`);
+  if (excludeId && /^\d+$/.test(excludeId)) where.push(`c.id <> ${add(Number(excludeId))}`);
 
-  if (q) query = query.ilike("name", `%${q}%`);
-  if (excludeId) query = query.neq("id", excludeId);
-
-  const { data, error } = await query;
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
+  const data = await dbQuery<{ id: number; name: string; company_type: string }>(
+    `SELECT c.id::int AS id, c.name, c.company_type FROM companies c WHERE ${where.join(" AND ")} ORDER BY c.name LIMIT 10`,
+    params
+  );
 
   return NextResponse.json({ companies: data });
 }

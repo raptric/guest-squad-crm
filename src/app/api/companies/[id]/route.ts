@@ -3,9 +3,12 @@ import { createClient } from "@/lib/supabase/server";
 import { parseCompanyFields, parsePropertyDetailsFields, toIntOrNull } from "../shared";
 import { getCurrentUser } from "@/lib/current-user";
 import { assignOwner } from "@/lib/assignment";
+import { companyAccessError } from "@/lib/visibility";
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const denied = await companyAccessError(id);
+  if (denied) return denied;
   const supabase = await createClient();
   const {
     data: { user },

@@ -36,6 +36,7 @@ import {
 } from "../../icons";
 import { getPicklistValues } from "@/lib/picklists";
 import { getCurrentUser } from "@/lib/current-user";
+import { canViewCompany } from "@/lib/visibility";
 import { assignableUsers, canAssign } from "@/lib/assignment";
 import { fetchActiveCampaigns, fetchCompanyEnrollments } from "@/lib/campaigns";
 import { todayUtc } from "@/lib/campaigns-format";
@@ -52,6 +53,8 @@ export default async function CompanyDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
+  // A company outside the person's view looks like one that doesn't exist.
+  if (!(await canViewCompany(await getCurrentUser(), id))) notFound();
   const supabase = await createClient();
 
   const { data: company } = await supabase

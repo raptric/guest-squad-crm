@@ -10,6 +10,7 @@ import {
   syncCompanyLinks,
 } from "@/lib/contacts";
 import { getHumanActor } from "../actor";
+import { contactAccessError } from "@/lib/visibility";
 
 const fail = (error: string, status: number) => NextResponse.json({ error }, { status });
 
@@ -21,6 +22,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const supabase = await createClient();
   const actor = await getHumanActor(supabase);
   if (!actor) return fail("Unauthorized", 401);
+  const denied = await contactAccessError(id);
+  if (denied) return denied;
 
   const body = await request.json();
   if (body.first_name !== undefined && !String(body.first_name).trim()) return fail("First name is required", 400);
@@ -66,6 +69,8 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
   const { id } = await params;
   const supabase = await createClient();
   if (!(await getHumanActor(supabase))) return fail("Unauthorized", 401);
+  const denied = await contactAccessError(id);
+  if (denied) return denied;
 
   const error = await softDeleteContact(supabase, Number(id));
   if (error) return fail(error.message, 500);

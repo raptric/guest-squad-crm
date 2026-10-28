@@ -37,7 +37,8 @@ export default async function CompaniesPage({ searchParams }: { searchParams: Pr
   const raw = await searchParams;
   const f = parseFilters(raw);
 
-  const [first, facets, actor, pipelineCounts] = await Promise.all([fetchCompanies(f), fetchFacets(), getCurrentUser(), fetchPipelineCounts(f)]);
+  const actor = await getCurrentUser();
+  const [first, facets, pipelineCounts] = await Promise.all([fetchCompanies(f, actor), fetchFacets(actor), fetchPipelineCounts(f, actor)]);
   // Only team leads and admins can assign; for everyone else the page has no checkboxes or assign controls.
   const mayAssign = canAssign(actor);
   const isAdmin = actor?.role === "super_admin";
@@ -59,7 +60,7 @@ export default async function CompaniesPage({ searchParams }: { searchParams: Pr
   const totalPages = Math.max(1, Math.ceil(total / f.size));
   const page = Math.min(f.page, totalPages);
   // A page number beyond the end (stale link, filters narrowed) falls back to the last page.
-  const { rows } = page === f.page ? first : await fetchCompanies({ ...f, page });
+  const { rows } = page === f.page ? first : await fetchCompanies({ ...f, page }, actor);
   const from = total === 0 ? 0 : (page - 1) * f.size + 1;
   const to = Math.min(page * f.size, total);
 

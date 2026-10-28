@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getPicklistValues } from "@/lib/picklists";
 import { getCurrentUser } from "@/lib/current-user";
+import { canViewCompany } from "@/lib/visibility";
 import { assignableUsers, canAssign } from "@/lib/assignment";
 import { CompanyForm, type CompanyInitialValues } from "../../company-form";
 
@@ -12,6 +13,7 @@ export default async function EditCompanyPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
+  if (!(await canViewCompany(await getCurrentUser(), id))) notFound();
   const supabase = await createClient();
 
   const [

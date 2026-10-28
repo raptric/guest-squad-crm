@@ -1,5 +1,7 @@
 import { query } from "@/lib/db";
 import { fetchPipeline } from "@/lib/pipeline";
+import { visibleSql } from "@/lib/visibility";
+import type { Actor } from "@/lib/assignment";
 import type { PipelineStatus } from "@/lib/pipeline-format";
 import { NO_TIER, type Filters, type SortKey } from "./list-filters";
 
@@ -34,13 +36,14 @@ const SORT_SQL: Record<SortKey, string> = {
 const HAS_CONTACT = `EXISTS (SELECT 1 FROM contact_companies cc JOIN contacts ct ON ct.id = cc.contact_id AND ct.deleted_at IS NULL WHERE cc.company_id = c.id)`;
 const like = (s: string) => `%${s.replace(/[\\%_]/g, "\\$&")}%`;
 
-export function buildWhere(f: Filters) {
+// `actor` limits the result to the companies that person may see (see visibility.ts).
+export function buildWhere(f: Filters, actor: Actor | null | undefined) {
   const params: unknown[] = [];
   const add = (v: unknown) => {
     params.push(v);
     return `$${params.length}`;
   };
-  const where: string[] = ["c.deleted_at IS NULL"];
+  const where: string[] = ["c.deleted_at IS NULL", visibleSql(actor, "c", add)];
 
   if (f.q) {
     const p = add(like(f.q));
@@ -134,8 +137,8 @@ export type CompanyRow = {
   contacts: number;
 };
 
-export async function fetchCompanies(f: Filters) {
-  const { sql, params } = buildWhere(f);
+export async function fetchCompanies(f: Filters, actor: Actor | null | undefined) {
+  const { sql, params } = buildWhere(f, actor);
   const orderBy = `${SORT_SQL[f.sort]} ${f.dir === "asc" ? "ASC" : "DESC"} NULLS LAST, c.id DESC`;
 
   const [rows, [{ total }]] = await Promise.all([
@@ -174,25 +177,34 @@ export type Facets = {
   ctypes: string[];
 };
 
-// Option lists for the filter panel, in one round trip.
-export async function fetchFacets(): Promise<Facets> {
+// Option lists for the filter panel, in one round trip. Counts and choices only cover what the actor may see.
+export async function fetchFacets(actor: Actor | null | undefined): Promise<Facets> {
   const pipeline = await fetchPipeline();
+  const params: unknown[] = [];
+  const add = (v: unknown) => {
+    params.push(v);
+    return `${params.length}`;
+  };
+  const vis = visibleSql(actor, "c", add);
+  const isAdmin = actor?.role === "super_admin";
+  const ownerWhere = isAdmin ? "true" : actor?.role === "team_lead" && actor.team_id != null ? `team_id = ${add(actor.team_id)}::bigint` : actor ? `id = ${add(actor.id)}::bigint` : "false";
+  const teamWhere = isAdmin ? "true" : actor?.team_id != null ? `id = ${add(actor.team_id)}::bigint` : "false";
   const [{ f }] = await query<{ f: Record<string, unknown> }>(`
     SELECT json_build_object(
       'countries', (SELECT coalesce(json_agg(json_build_object('value', v, 'label', v, 'n', n) ORDER BY n DESC), '[]'::json)
-                      FROM (SELECT country v, count(*)::int n FROM companies WHERE deleted_at IS NULL AND country IS NOT NULL GROUP BY 1) x),
+                      FROM (SELECT c.country v, count(*)::int n FROM companies c WHERE c.deleted_at IS NULL AND c.country IS NOT NULL AND ${vis} GROUP BY 1) x),
       'states', (SELECT coalesce(json_agg(json_build_object('value', v, 'label', v, 'n', n) ORDER BY v), '[]'::json)
-                   FROM (SELECT state v, count(*)::int n FROM companies WHERE deleted_at IS NULL AND state IS NOT NULL GROUP BY 1) x),
+                   FROM (SELECT c.state v, count(*)::int n FROM companies c WHERE c.deleted_at IS NULL AND c.state IS NOT NULL AND ${vis} GROUP BY 1) x),
       'sources', (SELECT coalesce(json_agg(json_build_object('value', v, 'label', v, 'n', n) ORDER BY n DESC), '[]'::json)
-                    FROM (SELECT source v, count(*)::int n FROM companies WHERE deleted_at IS NULL AND source IS NOT NULL GROUP BY 1) x),
-      'owners', (SELECT coalesce(json_agg(json_build_object('value', id::text, 'label', name) ORDER BY name), '[]'::json) FROM users),
-      'teams', (SELECT coalesce(json_agg(json_build_object('value', id::text, 'label', name) ORDER BY name), '[]'::json) FROM teams),
+                    FROM (SELECT c.source v, count(*)::int n FROM companies c WHERE c.deleted_at IS NULL AND c.source IS NOT NULL AND ${vis} GROUP BY 1) x),
+      'owners', (SELECT coalesce(json_agg(json_build_object('value', id::text, 'label', name) ORDER BY name), '[]'::json) FROM users WHERE ${ownerWhere}),
+      'teams', (SELECT coalesce(json_agg(json_build_object('value', id::text, 'label', name) ORDER BY name), '[]'::json) FROM teams WHERE ${teamWhere}),
       'batches', (SELECT coalesce(json_agg(json_build_object('value', id::text, 'label', campaign_name) ORDER BY created_at DESC), '[]'::json) FROM import_batches),
       'picklists', (SELECT coalesce(json_object_agg(field_name, vals), '{}'::json)
                       FROM (SELECT field_name, json_agg(value ORDER BY sort_order, id) vals FROM picklist_values
                              WHERE is_active AND field_name IN ('prospect_tier','property_type','property_class','company_type')
                              GROUP BY field_name) p)
-    ) AS f`);
+    ) AS f`, params);
   const pick = (f.picklists ?? {}) as Record<string, string[]>;
   return {
     pipeline,
@@ -213,8 +225,8 @@ export async function fetchFacets(): Promise<Facets> {
 
 // How many companies sit in each status and stage under the current filters, ignoring the status / stage choice itself
 // (so the chips can be switched between without the other counts going to zero). Keys are ids.
-export async function fetchPipelineCounts(f: Filters): Promise<{ status: Record<string, number>; stage: Record<string, number> }> {
-  const { sql, params } = buildWhere({ ...f, status: [], stage: [] });
+export async function fetchPipelineCounts(f: Filters, actor: Actor | null | undefined): Promise<{ status: Record<string, number>; stage: Record<string, number> }> {
+  const { sql, params } = buildWhere({ ...f, status: [], stage: [] }, actor);
   const rows = await query<{ status_id: string | null; stage_id: string | null; n: number }>(
     `SELECT c.pipeline_status_id::text AS status_id, c.pipeline_stage_id::text AS stage_id, count(*)::int AS n ${FROM} WHERE ${sql} GROUP BY 1, 2`,
     params

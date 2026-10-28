@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getPicklistValues } from "@/lib/picklists";
+import { companyAccessError } from "@/lib/visibility";
 
 // A lightweight, single-field update for the Review Queue's inline actions -- the full
 // PATCH /api/companies/[id] route requires name+company_type on every call, which is overkill
@@ -8,6 +9,8 @@ import { getPicklistValues } from "@/lib/picklists";
 // also advances lifecycle_stage to "Sales Qualified"; every other status leaves it unchanged.
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const denied = await companyAccessError(id);
+  if (denied) return denied;
   const supabase = await createClient();
   const {
     data: { user },

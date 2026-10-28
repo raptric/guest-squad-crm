@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { fetchPicklistValues } from "@/lib/picklists";
 import { getCurrentUser } from "@/lib/current-user";
 import { assignOwner } from "@/lib/assignment";
+import { companyAccessError } from "@/lib/visibility";
 
 const fail = (error: string, status = 400) => NextResponse.json({ error }, { status });
 
@@ -29,6 +30,8 @@ const PROPERTY_PICKLIST: Record<string, string> = {
 //   { target: "company" | "property", field, value }
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const denied = await companyAccessError(id);
+  if (denied) return denied;
   if (!/^\d+$/.test(id)) return fail("Invalid company id");
 
   const supabase = await createClient();

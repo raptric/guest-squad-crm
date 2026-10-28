@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { getCurrentUser } from "@/lib/current-user";
-import { createClient } from "@/lib/supabase/server";
+import { query } from "@/lib/db";
 import { DashboardFilters, type FilterOptions } from "./dashboard-filters";
 
 export const dynamic = "force-dynamic";
@@ -52,7 +52,9 @@ export default async function Dashboard({
 }) {
   const params = await searchParams;
   const user = await getCurrentUser();
-  const supabase = await createClient();
+  // Admins count everything; a team lead their team's companies; a user only their own.
+  const scopeUser = user?.role === "user" ? user.id : user?.role === "super_admin" ? null : -1;
+  const scopeTeam = user?.role === "team_lead" ? user.team_id : null;
 
   const filters: Filters = {
     country: params.country || undefined,
@@ -64,15 +66,11 @@ export default async function Dashboard({
   const group = GROUPS.some((g) => g.key === params.group) ? params.group! : "country";
 
   const summary = async (f: Filters, groupBy: string): Promise<Row[]> => {
-    const { data } = await supabase.rpc("dashboard_summary", {
-      p_country: f.country ?? null,
-      p_state: f.state ?? null,
-      p_city: f.city ?? null,
-      p_status: f.status ?? null,
-      p_type: f.type ?? null,
-      p_group_by: groupBy,
-    });
-    return ((data ?? []) as Record<string, unknown>[]).map((r) => ({
+    const data = await query<Record<string, unknown>>(
+      "SELECT * FROM dashboard_summary($1, $2, $3, $4, $5, $6, $7::bigint, $8::bigint)",
+      [f.country ?? null, f.state ?? null, f.city ?? null, f.status ?? null, f.type ?? null, groupBy, scopeUser, scopeTeam]
+    );
+    return data.map((r) => ({
       group_value: String(r.group_value),
       ...Object.fromEntries(Object.entries(r).filter(([k]) => k !== "group_value").map(([k, v]) => [k, n(v)])),
     })) as Row[];

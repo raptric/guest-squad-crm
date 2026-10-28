@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { companyAccessError } from "@/lib/visibility";
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const denied = await companyAccessError(id);
+  if (denied) return denied;
   const supabase = await createClient();
   const {
     data: { user },

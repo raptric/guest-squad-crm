@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/current-user";
+import { query as dbQuery } from "@/lib/db";
 import { LeadStatusActions } from "./lead-status-actions";
 
 export const dynamic = "force-dynamic";
@@ -28,10 +30,24 @@ export default async function ReviewQueuePage({
   const to = from + PAGE_SIZE - 1;
   const supabase = await createClient();
 
+  // Only the companies this person may see: admins all, a team lead their team's, a user their own.
+  const actor = await getCurrentUser();
+  const memberIds =
+    actor?.role === "team_lead" ? (await dbQuery<{ id: string }>("SELECT id FROM users WHERE team_id = $1", [actor.team_id])).map((r) => Number(r.id)) : [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const scope = (q: any) =>
+    actor?.role === "super_admin"
+      ? q
+      : actor?.role === "team_lead"
+        ? q.or(`team_id.eq.${actor.team_id},owner_id.in.(${memberIds.join(",") || "0"})`)
+        : actor?.role === "user"
+          ? q.eq("owner_id", actor.id)
+          : q.eq("id", -1);
+
   // Tab-strip counts: one lightweight column, filtered the same way the active list is,
   // tallied in JS (no SQL grouping needed for a handful of statuses). company_facts already
   // filters out soft-deleted companies internally (no deleted_at column exposed).
-  let countQuery = supabase.from("company_facts").select("lead_status");
+  let countQuery = scope(supabase.from("company_facts").select("lead_status"));
   if (params.country) countQuery = countQuery.eq("country", params.country);
   if (params.state) countQuery = countQuery.ilike("state", `%${params.state}%`);
   if (params.city) countQuery = countQuery.ilike("city", `%${params.city}%`);
@@ -69,6 +85,7 @@ export default async function ReviewQueuePage({
       .select("id, name, city, country, source, created_at", { count: "exact" })
       .eq("lead_status", "New")
       .is("deleted_at", null);
+    query = scope(query);
     if (params.country) query = query.eq("country", params.country);
     if (params.state) query = query.ilike("state", `%${params.state}%`);
     if (params.city) query = query.ilike("city", `%${params.city}%`);
@@ -81,6 +98,7 @@ export default async function ReviewQueuePage({
       .select("id, name, city, country, created_at, last_researched, identity_notes, confidence_notes, qualification_summary", { count: "exact" })
       .eq("lead_status", "Needs Review")
       .is("deleted_at", null);
+    query = scope(query);
     if (params.country) query = query.eq("country", params.country);
     if (params.state) query = query.ilike("state", `%${params.state}%`);
     if (params.city) query = query.ilike("city", `%${params.city}%`);
@@ -93,6 +111,7 @@ export default async function ReviewQueuePage({
       .select("id, name, city, country, created_at, last_researched, prospect_tier, qualification_summary", { count: "exact" })
       .eq("lead_status", "Qualified")
       .is("deleted_at", null);
+    query = scope(query);
     if (params.country) query = query.eq("country", params.country);
     if (params.state) query = query.ilike("state", `%${params.state}%`);
     if (params.city) query = query.ilike("city", `%${params.city}%`);

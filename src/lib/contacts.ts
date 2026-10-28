@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { matchEnum } from "@/lib/companies/matching";
 import { fetchPicklistValues } from "@/lib/picklists";
+import { unavailableCompanyIds } from "@/lib/visibility";
 
 // Who is writing. Agent (Codex) writes are always stored unverified with provenance;
 // is_verified is a human confirmation only.
@@ -194,11 +195,9 @@ export function isDuplicateEmailError(error: { code?: string } | null | undefine
   return error?.code === "23505";
 }
 
-export async function findMissingCompanies(supabase: SupabaseClient, companyIds: number[]) {
-  if (companyIds.length === 0) return [];
-  const { data } = await supabase.from("companies").select("id").in("id", companyIds).is("deleted_at", null);
-  const found = new Set((data ?? []).map((c) => Number(c.id)));
-  return companyIds.filter((id) => !found.has(id));
+// Company ids that don't exist, or that the signed-in person isn't allowed to see (human routes only).
+export async function findMissingCompanies(_supabase: SupabaseClient, companyIds: number[]) {
+  return unavailableCompanyIds(companyIds);
 }
 
 // Existing (live) contacts owning any of these emails. Emails are stored lower-cased.

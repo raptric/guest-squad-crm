@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/current-user";
 import { canMovePipeline, setCompanyPipeline } from "@/lib/pipeline";
+import { companyAccessError } from "@/lib/visibility";
 
 const fail = (error: string, status = 400) => NextResponse.json({ error }, { status });
 
@@ -8,6 +9,8 @@ const fail = (error: string, status = 400) => NextResponse.json({ error }, { sta
 // Allowed for admins, the company's owner, and team leads for their team's companies.
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const denied = await companyAccessError(id);
+  if (denied) return denied;
   if (!/^\d+$/.test(id)) return fail("Invalid company id");
   const actor = await getCurrentUser();
   if (!actor) return fail("Unauthorized", 401);

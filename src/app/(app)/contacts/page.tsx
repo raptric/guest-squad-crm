@@ -1,5 +1,8 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/current-user";
+import { query as dbQuery } from "@/lib/db";
+import { contactVisibleSql } from "@/lib/visibility";
 
 export const dynamic = "force-dynamic";
 
@@ -41,35 +44,41 @@ export default async function ContactsPage({
   const from = (page - 1) * pageSize;
   const to = from + pageSize - 1;
 
-  let query = supabase
-    .from("contacts")
-    .select(
-      `id, first_name, last_name,
+  // Which contacts, page by page: only those linked to a company this person may see.
+  const actor = await getCurrentUser();
+  const params: unknown[] = [];
+  const add = (v: unknown) => {
+    params.push(v);
+    return `$${params.length}`;
+  };
+  const where = ["k.deleted_at IS NULL", contactVisibleSql(actor, "k", add)];
+  const term = q?.trim();
+  if (term) {
+    const p = add(`%${term.replace(/[\%_]/g, "\$&")}%`);
+    where.push(`(k.first_name ILIKE ${p} OR k.last_name ILIKE ${p}
+      OR EXISTS (SELECT 1 FROM contact_emails e WHERE e.contact_id = k.id AND e.email ILIKE ${p})
+      OR EXISTS (SELECT 1 FROM contact_companies t WHERE t.contact_id = k.id AND t.job_title ILIKE ${p}))`);
+  }
+  const whereSql = where.join(" AND ");
+  const [idRows, [{ n: count }]] = await Promise.all([
+    dbQuery<{ id: string }>(`SELECT k.id FROM contacts k WHERE ${whereSql} ORDER BY k.created_at DESC, k.id DESC LIMIT ${pageSize} OFFSET ${from}`, params),
+    dbQuery<{ n: number }>(`SELECT count(*)::int AS n FROM contacts k WHERE ${whereSql}`, params),
+  ]);
+  const pageIds = idRows.map((r) => Number(r.id));
+  const { data: unordered } = pageIds.length
+    ? await supabase
+        .from("contacts")
+        .select(
+          `id, first_name, last_name,
        contact_companies ( is_primary, job_title, contact_role, decision_maker_level, is_verified,
          company:company_id ( id, name ) ),
        contact_emails ( email, is_primary, is_verified ),
-       contact_phones ( phone, is_primary, is_verified )`,
-      { count: "exact" }
-    )
-    .is("deleted_at", null)
-    .order("created_at", { ascending: false })
-    .range(from, to);
-
-  // Strip characters that are special in PostgREST's or() filter syntax.
-  const term = q?.trim().replace(/[,()%*]/g, " ");
-  if (term) {
-    // Emails and job titles live in child tables: find matching contact ids there first.
-    const [{ data: byEmail }, { data: byTitle }] = await Promise.all([
-      supabase.from("contact_emails").select("contact_id").ilike("email", `%${term}%`),
-      supabase.from("contact_companies").select("contact_id").ilike("job_title", `%${term}%`),
-    ]);
-    const ids = [...new Set([...(byEmail ?? []), ...(byTitle ?? [])].map((r) => r.contact_id))];
-    query = query.or(
-      [`first_name.ilike.%${term}%`, `last_name.ilike.%${term}%`, ...(ids.length ? [`id.in.(${ids.join(",")})`] : [])].join(",")
-    );
-  }
-
-  const { data: contacts, count } = await query;
+       contact_phones ( phone, is_primary, is_verified )`
+        )
+        .in("id", pageIds)
+    : { data: [] };
+  const order = new Map(pageIds.map((id, i) => [id, i]));
+  const contacts = (unordered ?? []).sort((x, y) => (order.get(Number(x.id)) ?? 0) - (order.get(Number(y.id)) ?? 0));
   const totalPages = Math.max(1, Math.ceil((count ?? 0) / pageSize));
   const pageHref = (p: number) => `/contacts?${new URLSearchParams({ ...(q ? { q } : {}), page: String(p) })}`;
 

@@ -2,11 +2,14 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getHumanActor } from "@/app/api/contacts/actor";
 import { createContact } from "@/app/api/contacts/create";
+import { companyAccessError } from "@/lib/visibility";
 
 // Quick-add from a company page: a flat form (one email, one phone) becomes a contact linked
 // to this company. If the email already belongs to someone, that person is linked instead.
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const denied = await companyAccessError(id);
+  if (denied) return denied;
   const supabase = await createClient();
   const actor = await getHumanActor(supabase);
   if (!actor) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

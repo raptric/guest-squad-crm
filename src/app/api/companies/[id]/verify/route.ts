@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/current-user";
 import { withTransaction } from "@/lib/db";
 import { applyVerifiedRule } from "@/lib/pipeline";
+import { companyAccessError } from "@/lib/visibility";
 import {
   VERIFICATION_INCOMPLETE,
   VERIFICATION_READY,
@@ -21,6 +22,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   if (!reviewer) return fail("Unauthorized", 401);
 
   const { id } = await params;
+  const denied = await companyAccessError(id);
+  if (denied) return denied;
   if (!/^\d+$/.test(id)) return fail("Invalid company id");
 
   const body = (await request.json()) as {

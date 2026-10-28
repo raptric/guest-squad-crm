@@ -78,7 +78,7 @@ export async function POST(request: Request) {
     filtersText = sel.query.slice(0, 4000);
     const raw: Record<string, string[]> = {};
     new URLSearchParams(filtersText).forEach((v, k) => (raw[k] = [...(raw[k] ?? []), v]));
-    const built = buildWhere(parseFilters(raw));
+    const built = buildWhere(parseFilters(raw), actor);
     where = built.sql;
     params.push(...built.params);
     const exclude = intList(sel.excludeIds);

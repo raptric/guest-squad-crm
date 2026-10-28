@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/current-user";
+import { canViewContact } from "@/lib/visibility";
 import { getPicklistValues } from "@/lib/picklists";
 import { ContactForm, type ContactInitialValues } from "../../contact-form";
 import type { CompanyOption } from "../../contact-types";
@@ -36,6 +38,7 @@ const PROVENANCE = "is_verified, source_url, evidence, added_by_type, added_by_n
 
 export default async function EditContactPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  if (!(await canViewContact(await getCurrentUser(), id))) notFound();
   const supabase = await createClient();
 
   const [contactRoles, decisionMakerLevels, contactLineTypes, emailLabels, phoneLabels, { data: contact }] =

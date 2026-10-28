@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/current-user";
+import { canViewCompany } from "@/lib/visibility";
 import { getPicklistValues } from "@/lib/picklists";
 import { ContactForm } from "../contact-form";
 
@@ -20,7 +22,7 @@ export default async function NewContactPage({
       getPicklistValues("contact_line_type"),
       getPicklistValues("email_label"),
       getPicklistValues("phone_label"),
-      company_id
+      company_id && (await canViewCompany(await getCurrentUser(), company_id))
         ? supabase.from("companies").select("id, name, company_type").eq("id", company_id).is("deleted_at", null).single()
         : Promise.resolve({ data: null }),
     ]);
