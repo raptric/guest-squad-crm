@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { getCurrentUser } from "@/lib/current-user";
@@ -66,6 +67,14 @@ export default async function SettingsPage() {
         <h1 className="text-xl font-semibold text-zinc-900">Settings</h1>
         <p className="text-sm text-zinc-500">Manage dropdown values used across Companies.</p>
       </div>
+
+      <Link href="/settings/ai" className="flex items-center justify-between rounded-xl border border-zinc-200 bg-white px-4 py-3 hover:bg-zinc-50">
+        <span>
+          <span className="block text-sm font-semibold text-zinc-900">AI</span>
+          <span className="block text-xs text-zinc-500">Choose ChatGPT or Claude, add the API key, and see usage.</span>
+        </span>
+        <span className="text-sm text-zinc-400">&rarr;</span>
+      </Link>
 
       <PipelineSettings statuses={pipeline} />
 
