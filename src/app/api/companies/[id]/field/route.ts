@@ -62,7 +62,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     return (data as unknown as Record<string, unknown> | null)?.[field] ?? null;
   };
 
-  let parsed: string | number | null;
+  let parsed: string | number | boolean | null;
 
   if (target === "company" && field in TEXT) {
     const rule = TEXT[field];
@@ -86,6 +86,10 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   } else if (target === "property" && field === "rooms_units") {
     if (raw && !/^\d{1,6}$/.test(raw)) return fail("Rooms/units must be a whole number");
     parsed = raw ? Number(raw) : null;
+  } else if (target === "property" && field === "contactless") {
+    // Checkbox: "true" records it; cleared goes back to "not recorded" (null), never a confirmed "no".
+    if (raw !== "" && raw !== "true") return fail("contactless must be true or empty");
+    parsed = raw === "true" ? true : null;
   } else {
     return fail(`${field} can't be edited inline`);
   }

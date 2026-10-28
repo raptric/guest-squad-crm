@@ -14,6 +14,7 @@ import { VerifyBox } from "./verify-box";
 import { verificationLabel } from "@/lib/verification";
 import { checkEnrollable, fetchEnrollmentRule } from "@/lib/campaign-rule";
 import { InlineField } from "./inline-field";
+import { ContactlessField } from "./contactless-field";
 import {
   BuildingIcon,
   BulbIcon,
@@ -103,7 +104,7 @@ export default async function CompanyDetailPage({
     isProperty
       ? supabase
           .from("property_details")
-          .select("id, property_type, property_class, rooms_units, portfolio_role")
+          .select("id, property_type, property_class, rooms_units, portfolio_role, contactless")
           .eq("company_id", id)
           .single()
       : Promise.resolve({ data: null }),
@@ -306,6 +307,7 @@ export default async function CompanyDetailPage({
                 <InlineField {...prop} field="property_class" label="Class" type="select" options={options(propertyClasses, propertyDetails.property_class)} value={propertyDetails.property_class} />
                 <InlineField {...prop} field="rooms_units" label="Rooms / units" type="number" value={propertyDetails.rooms_units === null ? null : String(propertyDetails.rooms_units)} />
                 <InlineField {...prop} field="portfolio_role" label="Portfolio role" type="select" options={options(portfolioRoles, propertyDetails.portfolio_role)} value={propertyDetails.portfolio_role} />
+                <ContactlessField companyId={companyId} value={propertyDetails.contactless ?? null} />
               </dl>
             </div>
           )}
