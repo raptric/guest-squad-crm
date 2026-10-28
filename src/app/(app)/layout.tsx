@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getCurrentUser } from "@/lib/current-user";
 import { LogoutButton } from "./logout-button";
 import { NavLink } from "./nav-link";
+import { SettingsNav } from "./settings-nav";
 import { canAssign } from "@/lib/assignment";
 import { fetchUnassignedBadge } from "@/lib/companies/workload";
 import { fetchTaskBadge } from "@/lib/campaigns";
@@ -39,7 +40,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <NavLink href="/campaigns" icon={<MegaphoneIcon />}>Campaigns</NavLink>
           {user?.role === "super_admin" && <NavLink href="/scraper-monitor" icon={<ChartIcon />}>Scraper Monitor</NavLink>}
           {user?.role === "super_admin" && <NavLink href="/users" icon={<UsersIcon />}>Users</NavLink>}
-          {user?.role === "super_admin" && <NavLink href="/settings" icon={<CogIcon />}>Settings</NavLink>}
+          {user?.role === "super_admin" && <SettingsNav icon={<CogIcon />} />}
         </nav>
 
         <div className="border-t border-zinc-200 p-3">

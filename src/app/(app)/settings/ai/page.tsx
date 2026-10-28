@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/current-user";
 import { aiSecretConfigured } from "@/lib/ai/crypto";
@@ -21,10 +20,7 @@ export default async function AiSettingsPage() {
   return (
     <div className="mx-auto w-full max-w-3xl space-y-6 p-6 lg:p-8">
       <div>
-        <Link href="/settings" className="text-sm text-zinc-500 hover:text-zinc-800">
-          &larr; Back to Settings
-        </Link>
-        <h1 className="mt-1 text-2xl font-semibold tracking-tight text-zinc-900">AI</h1>
+        <h1 className="text-xl font-semibold text-zinc-900">AI</h1>
         <p className="text-sm text-zinc-500">
           Choose the AI service the CRM uses to write copy. {settings.activeProvider ? `Now using ${PROVIDER_LABEL[settings.activeProvider]}.` : "No service is in use yet."}
         </p>
