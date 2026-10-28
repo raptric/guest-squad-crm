@@ -3,6 +3,7 @@ import { getCurrentUser } from "@/lib/current-user";
 import { aiSecretConfigured } from "@/lib/ai/crypto";
 import { PROVIDER_LABEL } from "@/lib/ai/providers";
 import { fetchAiSettings, fetchRecentUsage, fetchUsageTotals } from "@/lib/ai/settings";
+import { AiHeader } from "./ai-header";
 import { ProvidersPanel } from "./providers-panel";
 
 export const dynamic = "force-dynamic";
@@ -10,7 +11,7 @@ export const dynamic = "force-dynamic";
 const when = (iso: string) =>
   new Date(iso).toLocaleString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "UTC" }) + " UTC";
 
-// Settings -> AI. Admin only. Phase 1: the AI services, their keys, the one in use, and a log of every call.
+// Settings -> AI -> Providers & usage. Admin only: the AI services, their keys, the one in use, and a log of every call.
 export default async function AiSettingsPage() {
   const user = await getCurrentUser();
   if (user?.role !== "super_admin") redirect("/");
@@ -19,12 +20,7 @@ export default async function AiSettingsPage() {
 
   return (
     <div className="mx-auto w-full max-w-3xl space-y-6 p-6 lg:p-8">
-      <div>
-        <h1 className="text-xl font-semibold text-zinc-900">AI</h1>
-        <p className="text-sm text-zinc-500">
-          Choose the AI service the CRM uses to write copy. {settings.activeProvider ? `Now using ${PROVIDER_LABEL[settings.activeProvider]}.` : "No service is in use yet."}
-        </p>
-      </div>
+      <AiHeader description={`Choose the AI service the CRM uses to write copy. ${settings.activeProvider ? `Now using ${PROVIDER_LABEL[settings.activeProvider]}.` : "No service is in use yet."}`} />
 
       <ProvidersPanel settings={settings} secretReady={aiSecretConfigured()} />
 
