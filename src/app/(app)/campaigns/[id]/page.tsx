@@ -8,6 +8,7 @@ import { CampaignForm } from "../campaign-form";
 import { CampaignStatusActions } from "../status-actions";
 import { DuplicateButton } from "../duplicate-button";
 import { PlaybookPanel } from "../playbook-panel";
+import { CampaignTabs } from "../campaign-tabs";
 import { audienceSummary } from "@/lib/campaign-fit-format";
 
 export const dynamic = "force-dynamic";
@@ -44,14 +45,13 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
         </div>
         <div className="flex flex-col items-end gap-2">
           <div className="flex items-center gap-2">
-            <Link href={`/campaigns/${campaign.id}/fit`} className="rounded-lg border border-zinc-300 px-2.5 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-50">
-              Companies that fit
-            </Link>
             <DuplicateButton id={campaign.id} />
           </div>
           {campaign.can_manage && <CampaignStatusActions id={campaign.id} status={campaign.status} />}
         </div>
       </div>
+
+      <CampaignTabs id={campaign.id} active="details" />
 
       {campaign.status === "completed" && campaign.running > 0 && (
         <p className="rounded-xl bg-sky-50 px-4 py-3 text-sm text-sky-900">

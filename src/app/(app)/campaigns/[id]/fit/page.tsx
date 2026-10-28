@@ -4,6 +4,7 @@ import { getCurrentUser } from "@/lib/current-user";
 import { fetchCampaign } from "@/lib/campaigns";
 import { fetchFitList } from "@/lib/campaign-fit";
 import { audienceSummary, FIT_CHIP, FIT_TEXT, type FitLabel } from "@/lib/campaign-fit-format";
+import { CampaignTabs } from "../../campaign-tabs";
 
 export const dynamic = "force-dynamic";
 
@@ -51,6 +52,8 @@ export default async function CampaignFitPage({ params, searchParams }: { params
           {audienceSummary(campaign.criteria) ? ` · ${audienceSummary(campaign.criteria)}` : ""}
         </p>
       </div>
+
+      <CampaignTabs id={id} active="fit" />
 
       {!list.hasCriteria ? (
         <div className="rounded-2xl border border-dashed border-zinc-300 bg-white px-6 py-12 text-center">

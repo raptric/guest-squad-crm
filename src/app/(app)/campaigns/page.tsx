@@ -71,7 +71,11 @@ export default async function CampaignsPage() {
                   </td>
                   <td className="whitespace-nowrap px-3 py-4 text-zinc-600">{c.owner_name ?? "—"}</td>
                   <td className="px-3 py-4 text-right tabular-nums text-zinc-700">{c.step_count}</td>
-                  <td className="px-3 py-4 text-right tabular-nums text-zinc-700">{c.active_enrollments}</td>
+                  <td className="px-3 py-4 text-right tabular-nums text-zinc-700">
+                    <Link href={`/campaigns/${c.id}/enrollments`} className="text-sky-700 hover:underline" title="See who is in this campaign">
+                      {c.active_enrollments}
+                    </Link>
+                  </td>
                   <td className="whitespace-nowrap px-3 py-4 text-zinc-500">{timeAgo(c.created_at)}</td>
                   <td className="px-5 py-4 text-right">
                     <div className="flex flex-col items-end gap-2">
