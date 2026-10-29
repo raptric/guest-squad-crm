@@ -5,6 +5,7 @@ import { fetchCampaignList, fetchPlaybooks, fetchTasks, fetchTaskSummary, type T
 import { CHANNEL_CHIP, DUE_TONE, dueInfo, formatDate, todayUtc } from "@/lib/campaigns-format";
 import { timeAgo } from "@/lib/time-ago";
 import { TaskActions } from "./task-actions";
+import { TaskEmail } from "./task-email";
 import { CampaignFilter } from "./campaign-filter";
 import { PlaybookPanel } from "../campaigns/playbook-panel";
 
@@ -186,6 +187,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
                       </details>
                     )}
                     <PlaybookPanel playbook={playbooks[t.campaign_id]} />
+                    {t.mail && <TaskEmail taskId={t.id} status={t.status} canAct={mayAct && t.enrollment_status !== "stopped" && t.campaign_status !== "paused"} mail={t.mail} senderName={actor.name} />}
                     {t.status !== "pending" && (
                       <p className="text-xs text-zinc-500">
                         {t.status === "done" ? "Done" : "Skipped"} by {t.completed_by_name ?? "someone"} {t.completed_at ? timeAgo(t.completed_at) : ""}
@@ -193,7 +195,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
                       </p>
                     )}
                   </div>
-                  <TaskActions taskId={t.id} status={t.status} canAct={mayAct && t.enrollment_status !== "stopped" && t.campaign_status !== "paused"} />
+                  <TaskActions taskId={t.id} status={t.status} channel={t.step_channel} canAct={mayAct && t.enrollment_status !== "stopped" && t.campaign_status !== "paused"} />
                 </div>
               </li>
             );

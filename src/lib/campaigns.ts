@@ -2,6 +2,7 @@ import { query } from "@/lib/db";
 import { leadScopeSql, type Actor } from "@/lib/assignment";
 import { visibleSql } from "@/lib/visibility";
 import { CHANNELS, type Visibility } from "@/lib/campaigns-format";
+import { EMAIL_CHANNELS, isEmailChannel, type MessageSource, type TaskMail } from "@/lib/campaign-messages-format";
 import { audienceSummary, EMPTY_CRITERIA, type Criteria, type Portfolio } from "@/lib/campaign-fit-format";
 
 // Campaigns, phase 1: manual steps and tasks. "Today" is the UTC calendar date for now (per-user time zones come later).
@@ -9,7 +10,6 @@ export const READY_FOR_OUTREACH = "Ready for Outreach";
 export const TODAY_SQL = "(now() AT TIME ZONE 'UTC')::date";
 
 export type CopySource = "ai" | "edited" | "human";
-export const EMAIL_CHANNELS = ["Initial Email", "Follow-up Email"] as const;
 export type StepInput = { day_number: number; channel: string; title: string; instructions: string; subject: string; body: string; copy_source: CopySource | null };
 export type CampaignInput = {
   name: string;
@@ -86,7 +86,7 @@ export function parseCampaignInput(body: unknown): { value: CampaignInput } | { 
     const instructions = typeof s.instructions === "string" ? s.instructions.trim() : "";
     if (instructions.length > 4000) return { error: `Step ${n}: the instructions must be 4,000 characters or fewer.` };
     // The baseline email only exists on email steps.
-    const isEmail = (EMAIL_CHANNELS as readonly string[]).includes(s.channel);
+    const isEmail = EMAIL_CHANNELS.includes(s.channel);
     const subject = isEmail && typeof s.subject === "string" ? s.subject.replace(/\s+/g, " ").trim() : "";
     const body = isEmail && typeof s.body === "string" ? s.body.replace(/\r\n/g, "\n").trim() : "";
     if (subject.length > 200) return { error: `Step ${n}: the subject must be 200 characters or fewer.` };
@@ -404,6 +404,7 @@ export type TaskRow = {
   completed_at: Date | null;
   completed_by_name: string | null;
   notes: string | null;
+  mail?: TaskMail | null; // email tasks only
 };
 export type EnrollmentRow = {
   id: string;
@@ -421,6 +422,50 @@ export type EnrollmentRow = {
   enrolled_by_name: string | null;
   tasks: TaskRow[];
 };
+
+// What the email tasks among these need: the campaign's baseline (read live, and only while the step is still the same kind of step),
+// the values for its placeholders, the address to write to, and the email that was sent if the task is done.
+export async function fetchTaskMail(tasks: { id: string; step_channel: string }[]): Promise<Record<string, TaskMail>> {
+  const ids = tasks.filter((t) => isEmailChannel(t.step_channel)).map((t) => t.id);
+  if (!ids.length) return {};
+  const rows = await query<Omit<TaskMail, "sent"> & { task_id: string; sent_subject: string | null; sent_body: string | null; sent_at: string | null; sent_by: string | null; sent_source: MessageSource | null }>(
+    `SELECT t.id::text AS task_id,
+            CASE WHEN s.channel = t.step_channel THEN coalesce(s.subject, '') ELSE '' END AS baseline_subject,
+            CASE WHEN s.channel = t.step_channel THEN coalesce(s.body, '') ELSE '' END AS baseline_body,
+            coalesce(ct.first_name, '') AS first_name, c.name AS company_name, coalesce(c.city, '') AS city,
+            coalesce((SELECT ce.email FROM contact_emails ce WHERE ce.contact_id = ct.id ORDER BY ce.is_primary DESC NULLS LAST, ce.id LIMIT 1), c.email, '') AS to_email,
+            m.subject AS sent_subject, m.body AS sent_body, m.sent_at, su.name AS sent_by, m.source AS sent_source
+       FROM campaign_tasks t
+       JOIN campaign_enrollments e ON e.id = t.enrollment_id
+       JOIN companies c ON c.id = e.company_id
+       LEFT JOIN contacts ct ON ct.id = e.contact_id
+       LEFT JOIN campaign_steps s ON s.campaign_id = e.campaign_id AND s.position = t.step_position
+       LEFT JOIN LATERAL (SELECT subject, body, sent_at, sent_by, source FROM campaign_messages x WHERE x.task_id = t.id AND x.status = 'sent' ORDER BY x.id DESC LIMIT 1) m ON true
+       LEFT JOIN users su ON su.id = m.sent_by
+      WHERE t.id = ANY($1::bigint[])`,
+    [ids]
+  );
+  return Object.fromEntries(
+    rows.map((r) => [
+      r.task_id,
+      {
+        baseline_subject: r.baseline_subject,
+        baseline_body: r.baseline_body,
+        first_name: r.first_name,
+        company_name: r.company_name,
+        city: r.city,
+        to_email: r.to_email,
+        sent: r.sent_body !== null ? { subject: r.sent_subject ?? "", body: r.sent_body, at: r.sent_at, by: r.sent_by, source: r.sent_source ?? "human" } : null,
+      } satisfies TaskMail,
+    ])
+  );
+}
+
+// The emails recorded as sent for a company, by id, so the activity timeline can show their text.
+export async function fetchCompanyMessages(companyId: number): Promise<Record<string, { subject: string; body: string }>> {
+  const rows = await query<{ id: string; subject: string; body: string }>("SELECT id::text, subject, body FROM campaign_messages WHERE company_id = $1 AND status = 'sent'", [companyId]);
+  return Object.fromEntries(rows.map((r) => [r.id, { subject: r.subject, body: r.body }]));
+}
 
 export async function fetchCompanyEnrollments(companyId: number): Promise<EnrollmentRow[]> {
   const enrollments = await query<Omit<EnrollmentRow, "tasks">>(
@@ -443,7 +488,8 @@ export async function fetchCompanyEnrollments(companyId: number): Promise<Enroll
       WHERE t.enrollment_id = ANY($1) ORDER BY t.enrollment_id, t.step_position`,
     [enrollments.map((e) => e.id)]
   );
-  return enrollments.map((e) => ({ ...e, tasks: tasks.filter((t) => t.enrollment_id === e.id) }));
+  const mail = await fetchTaskMail(tasks);
+  return enrollments.map((e) => ({ ...e, tasks: tasks.filter((t) => t.enrollment_id === e.id).map((t) => ({ ...t, mail: mail[t.id] ?? null })) }));
 }
 
 // ---------------- the My tasks list ----------------
@@ -539,7 +585,8 @@ export async function fetchTasks(args: {
     })(),
   ]);
   const count = (tab: TaskTab) => counts.find((c) => c.tab === tab)?.n ?? 0;
-  return { rows, counts: { overdue: count("overdue"), today: count("today"), upcoming: count("upcoming"), paused: count("paused"), done: count("done") } };
+  const mail = await fetchTaskMail(rows);
+  return { rows: rows.map((r) => ({ ...r, mail: mail[r.id] ?? null })), counts: { overdue: count("overdue"), today: count("today"), upcoming: count("upcoming"), paused: count("paused"), done: count("done") } };
 }
 
 export type SummaryRow = { id: string; name: string; team_name: string | null; due_today: number; overdue: number; done_week: number };
@@ -595,6 +642,9 @@ export type TaskForAction = {
   recipient_label: string;
   company_id: string;
   company_name: string;
+  campaign_id: string;
+  step_position: number;
+  contact_id: string | null;
   allowed: boolean;
 };
 
@@ -612,8 +662,8 @@ const accessSql = (actor: Actor, params: unknown[]) => {
 export async function getTaskForAction(actor: Actor, taskId: number): Promise<TaskForAction | null> {
   const params: unknown[] = [taskId];
   const [row] = await query<TaskForAction>(
-    `SELECT t.id, t.status, t.step_title, t.step_day, t.step_channel, t.enrollment_id, e.status AS enrollment_status,
-            k.name AS campaign_name, k.status AS campaign_status, e.recipient_label, c.id AS company_id, c.name AS company_name,
+    `SELECT t.id, t.status, t.step_title, t.step_day, t.step_channel, t.step_position, t.enrollment_id, e.status AS enrollment_status,
+            k.id AS campaign_id, k.name AS campaign_name, k.status AS campaign_status, e.recipient_label, e.contact_id, c.id AS company_id, c.name AS company_name,
             ${accessSql(actor, params)} AS allowed
        FROM campaign_tasks t
        JOIN campaign_enrollments e ON e.id = t.enrollment_id

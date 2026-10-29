@@ -267,6 +267,21 @@ async function companyValues(companyId: number, campaignId: string, notes: strin
   };
 }
 
+// ---- what was already sent ----
+
+async function sentSoFar(companyId: number, campaignId: string): Promise<string> {
+  const rows = await query<{ step_position: number | null; step_day: number | null; channel: string; subject: string; body: string; sent_at: Date | null }>(
+    "SELECT step_position, step_day, channel, subject, body, sent_at FROM campaign_messages WHERE company_id = $1 AND campaign_id = $2 AND status = 'sent' AND direction = 'out' ORDER BY sent_at, id",
+    [companyId, campaignId],
+  );
+  return rows
+    .map((r) => {
+      const heading = join([r.step_position ? `Step ${r.step_position}` : "", r.channel, r.step_day ? `day ${r.step_day}` : "", r.sent_at ? `sent ${date(r.sent_at)}` : ""], " · ");
+      return `${heading}\n${r.subject ? `Subject: ${r.subject}\n` : ""}${r.body}`;
+    })
+    .join("\n\n");
+}
+
 // ---- contact and sender ----
 
 async function contactValues(companyId: number, choice: ContactChoice, notes: string[]): Promise<Record<string, string>> {
@@ -363,6 +378,13 @@ export async function buildValues(input: ContextInput): Promise<ContextResult> {
     Object.assign(values, await companyValues(input.companyId, input.campaignId, notes));
     Object.assign(values, await contactValues(input.companyId, input.contact ?? null, notes));
   }
-  // Baselines and the record of sent messages do not exist yet; their codes stay empty until they are built.
+  // The baseline written for this step, and what was already sent to this company in this campaign.
+  const step = campaign.steps[input.stepNumber - 1];
+  if (step?.body?.trim()) {
+    values["baseline.subject"] = s(step.subject);
+    values["baseline.body"] = s(step.body);
+    values.baseline = `${step.subject?.trim() ? `Subject: ${step.subject.trim()}\n\n` : ""}${step.body.trim()}`;
+  }
+  if (input.companyId) values.sent_so_far = await sentSoFar(input.companyId, input.campaignId);
   return { values, notes };
 }

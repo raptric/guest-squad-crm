@@ -39,7 +39,7 @@ import { getPicklistValues } from "@/lib/picklists";
 import { getCurrentUser } from "@/lib/current-user";
 import { canViewCompany } from "@/lib/visibility";
 import { assignableUsers, canAssign } from "@/lib/assignment";
-import { fetchOpenCampaigns, fetchCompanyEnrollments, fetchPlaybooks } from "@/lib/campaigns";
+import { fetchOpenCampaigns, fetchCompanyEnrollments, fetchCompanyMessages, fetchPlaybooks } from "@/lib/campaigns";
 import { fetchFitForCompany } from "@/lib/campaign-fit";
 import { todayUtc } from "@/lib/campaigns-format";
 import { CampaignCard } from "./campaign-card";
@@ -141,7 +141,7 @@ export default async function CompanyDetailPage({
       .order("detected_at", { ascending: false }),
     supabase
       .from("activities")
-      .select("id, activity_type, actor_name, body, created_at")
+      .select("id, activity_type, actor_name, body, metadata, created_at")
       .eq("company_id", id)
       .order("created_at", { ascending: false }),
     supabase
@@ -212,7 +212,11 @@ export default async function CompanyDetailPage({
   const ready = eligibility.ok;
   const mayEnroll = ready && isOwner;
   const [enrollments, campaigns] = await Promise.all([fetchCompanyEnrollments(companyId), mayEnroll && actor ? fetchOpenCampaigns(actor) : Promise.resolve([])]);
-  const [playbooks, fits] = await Promise.all([fetchPlaybooks(enrollments.map((e) => e.campaign_id)), fetchFitForCompany(companyId, campaigns.map((c) => c.id))]);
+  const [playbooks, fits, sentMessages] = await Promise.all([
+    fetchPlaybooks(enrollments.map((e) => e.campaign_id)),
+    fetchFitForCompany(companyId, campaigns.map((c) => c.id)),
+    fetchCompanyMessages(companyId),
+  ]);
   const canActOnTasks =
     !!actor &&
     (actor.role === "super_admin" ||
@@ -564,6 +568,7 @@ export default async function CompanyDetailPage({
                 mayEnroll={mayEnroll}
                 enrollNote={enrollNote}
                 canAct={canActOnTasks}
+                senderName={actor?.name ?? ""}
                 enrollments={enrollments}
                 playbooks={playbooks}
                 campaigns={campaigns.map((c) => ({ ...c, fit: fits[c.id] ?? null }))}
@@ -591,6 +596,16 @@ export default async function CompanyDetailPage({
                         </div>
                         <div className="text-xs text-zinc-500">{a.actor_name}</div>
                         {a.body && <p className="mt-1 whitespace-pre-wrap text-zinc-600">{a.body}</p>}
+                        {(() => {
+                          const sent = sentMessages[String((a.metadata as { message_id?: string | number } | null)?.message_id ?? "")];
+                          return sent ? (
+                            <details className="mt-1.5 rounded-lg border border-zinc-200 bg-zinc-50 p-2">
+                              <summary className="cursor-pointer text-xs font-medium text-sky-700">Show the email</summary>
+                              {sent.subject && <p className="mt-1.5 text-xs font-medium text-zinc-900">Subject: {sent.subject}</p>}
+                              <p className="mt-1 whitespace-pre-wrap text-xs text-zinc-700">{sent.body}</p>
+                            </details>
+                          ) : null;
+                        })()}
                       </li>
                     ))}
                   </ul>

@@ -6,6 +6,7 @@ import type { EnrollmentRow, Playbook } from "@/lib/campaigns";
 import { CHANNEL_CHIP, DUE_TONE, ENROLLMENT_CHIP, dueInfo, formatDate } from "@/lib/campaigns-format";
 import { MegaphoneIcon, PlusIcon } from "../../icons";
 import { TaskActions } from "../../tasks/task-actions";
+import { TaskEmail } from "../../tasks/task-email";
 import { PlaybookPanel } from "../../campaigns/playbook-panel";
 import { FIT_CHIP, FIT_TEXT, type Fit } from "@/lib/campaign-fit-format";
 
@@ -21,6 +22,7 @@ export function CampaignCard({
   mayEnroll,
   enrollNote,
   canAct,
+  senderName,
   enrollments,
   playbooks,
   campaigns,
@@ -33,6 +35,7 @@ export function CampaignCard({
   mayEnroll: boolean;
   enrollNote: string | null;
   canAct: boolean;
+  senderName: string;
   enrollments: EnrollmentRow[];
   playbooks: Record<string, Playbook>;
   campaigns: CampaignOption[];
@@ -69,7 +72,7 @@ export function CampaignCard({
       ) : (
         <div className="space-y-5">
           {enrollments.map((e) => (
-            <EnrollmentBlock key={e.id} enrollment={e} playbook={playbooks[e.campaign_id]} canAct={canAct} today={today} />
+            <EnrollmentBlock key={e.id} enrollment={e} playbook={playbooks[e.campaign_id]} canAct={canAct} today={today} senderName={senderName} />
           ))}
           {!mayEnroll && enrollNote && <p className="text-xs text-zinc-500">{enrollNote}</p>}
         </div>
@@ -90,7 +93,7 @@ export function CampaignCard({
   );
 }
 
-function EnrollmentBlock({ enrollment: e, playbook, canAct, today }: { enrollment: EnrollmentRow; playbook: Playbook | undefined; canAct: boolean; today: string }) {
+function EnrollmentBlock({ enrollment: e, playbook, canAct, today, senderName }: { enrollment: EnrollmentRow; playbook: Playbook | undefined; canAct: boolean; today: string; senderName: string }) {
   const router = useRouter();
   const [stopping, setStopping] = useState(false);
   const [note, setNote] = useState("");
@@ -181,7 +184,8 @@ function EnrollmentBlock({ enrollment: e, playbook, canAct, today }: { enrollmen
                   {t.notes ? `: ${t.notes}` : ""}
                 </p>
               )}
-              <TaskActions taskId={t.id} status={t.status} canAct={canAct && e.status !== "stopped" && !(e.status === "active" && e.campaign_status === "paused")} />
+              {t.mail && <TaskEmail taskId={t.id} status={t.status} canAct={canAct && e.status !== "stopped" && !(e.status === "active" && e.campaign_status === "paused")} mail={t.mail} senderName={senderName} />}
+              <TaskActions taskId={t.id} status={t.status} channel={t.step_channel} canAct={canAct && e.status !== "stopped" && !(e.status === "active" && e.campaign_status === "paused")} />
             </li>
           );
         })}

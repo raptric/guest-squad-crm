@@ -107,10 +107,10 @@ export const CODES: CodeDef[] = [
   co("Sender", "sender.phone", "Sender phone"),
   co("Sender", "sender.email", "Sender email"),
 
-  co("Baseline and history", "baseline", "The saved baseline for this step, with headings", { block: true, soon: true }),
-  co("Baseline and history", "baseline.subject", "Baseline subject", { soon: true }),
-  co("Baseline and history", "baseline.body", "Baseline text", { soon: true }),
-  co("Baseline and history", "sent_so_far", "What was already sent to this company in this campaign", { soon: true }),
+  co("Baseline and history", "baseline", "The saved baseline for this step, with headings", { block: true }),
+  co("Baseline and history", "baseline.subject", "Baseline subject"),
+  co("Baseline and history", "baseline.body", "Baseline text"),
+  co("Baseline and history", "sent_so_far", "What was already sent to this company in this campaign"),
 ];
 
 const BY_CODE = new Map(CODES.map((d) => [d.code, d]));
