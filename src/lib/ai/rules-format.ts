@@ -1,24 +1,4 @@
-// The step types the AI writes for, and the writing rules text. Safe to import from the browser.
-
-// The step types match the Channel dropdown in a campaign step (Initial Email, Follow-up Email, Call, LinkedIn ...).
-export const ROLES = [
-  { key: "initial_email", label: "Initial Email", channel: "email" },
-  { key: "followup_email", label: "Follow-up Email", channel: "email" },
-  { key: "call", label: "Call", channel: "call" },
-  { key: "linkedin_connect", label: "LinkedIn connection", channel: "linkedin" },
-  { key: "linkedin_message", label: "LinkedIn message", channel: "linkedin" },
-] as const;
-
-export type RoleKey = (typeof ROLES)[number]["key"];
-export const ROLE_KEYS = ROLES.map((r) => r.key) as RoleKey[];
-
-// Earlier versions used other names; saved history and examples may still carry them.
-const LEGACY_ROLE: Record<string, RoleKey> = { opener: "initial_email", followup: "followup_email", value_add: "followup_email", breakup: "followup_email", call_script: "call" };
-export function normalizeRole(key: string): RoleKey | null {
-  if ((ROLE_KEYS as string[]).includes(key)) return key as RoleKey;
-  return LEGACY_ROLE[key] ?? null;
-}
-export const roleLabel = (key: string) => ROLES.find((r) => r.key === normalizeRole(key))?.label ?? key;
+// The writing rules text and its starting value. Safe to import from the browser.
 
 export const RULES_TEXT_MAX = 6000;
 
@@ -37,7 +17,6 @@ NEVER WRITE
 Avoid spam-trigger words: free, guarantee, act now, limited time, risk-free, 100%, winner, urgent, click here.`;
 
 type LegacyRules = {
-  roles?: Record<string, { min?: number; max?: number; notes?: string }>;
   email?: Record<string, unknown>;
   voice?: string;
   bannedPhrases?: string[];

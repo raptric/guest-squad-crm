@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { withTransaction } from "@/lib/db";
-import { checkExample, checkKnowledgeBody, checkRulesText, isKnowledgeKey, requireAdmin, saveKnowledge, saveRules, updateExample } from "@/lib/ai/content";
+import { checkKnowledgeBody, checkPromptBody, checkRulesText, isKnowledgeKey, isPromptKey, requireAdmin, saveKnowledge, savePrompt, saveRules } from "@/lib/ai/content";
 import { rulesText } from "@/lib/ai/rules-format";
 
 const fail = (error: string, status = 400) => NextResponse.json({ error }, { status });
@@ -26,11 +26,13 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
       const rules = checkRulesText(rulesText(v.snapshot.data));
       if ("error" in rules) return { error: `This old version can't be restored: ${rules.error}` };
       await saveRules(client, rules.value, actor.id);
+    } else if (v.kind === "prompt") {
+      if (!isPromptKey(v.ref)) return { error: "That prompt no longer exists." };
+      const body = checkPromptBody(v.snapshot.body);
+      if ("error" in body) return { error: `This old version can't be restored: ${body.error}` };
+      await savePrompt(client, v.ref, body.value, actor.id);
     } else {
-      const ex = checkExample(v.snapshot);
-      if ("error" in ex) return { error: `This old version can't be restored: ${ex.error}` };
-      const ok = await updateExample(client, v.ref, ex.value, v.snapshot.is_active !== false, actor.id);
-      if (!ok) return { error: "That example no longer exists.", status: 404 };
+      return { error: "Examples are switched off, so this version can't be restored." };
     }
     return { ok: true };
   });

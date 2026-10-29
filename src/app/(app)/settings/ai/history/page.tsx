@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/current-user";
 import { fetchVersions, type Kind, type VersionRow } from "@/lib/ai/content";
 import { KNOWLEDGE_TOPICS } from "@/lib/ai/knowledge-format";
-import { roleLabel } from "@/lib/ai/rules-format";
+import { promptTitle } from "@/lib/ai/prompts-format";
 import { AiHeader } from "../ai-header";
 import { RestoreButton } from "./restore-button";
 
@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 const KINDS: { kind: Kind; label: string }[] = [
   { kind: "knowledge", label: "Knowledge" },
   { kind: "rules", label: "Writing rules" },
-  { kind: "example", label: "Examples" },
+  { kind: "prompt", label: "Prompts" },
 ];
 
 const when = (iso: string) => new Date(iso).toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "UTC" }) + " UTC";
@@ -27,12 +27,9 @@ function describe(v: VersionRow): { title: string; detail: string } {
     const title = KNOWLEDGE_TOPICS.find((t) => t.key === v.ref)?.title ?? v.ref.replace(/^service:/, "Service: ");
     return { title, detail: clip(s.body, 160) || "(empty)" };
   }
-  if (v.kind === "rules") {
-    const d = (s.data ?? {}) as { text?: unknown };
-    return typeof d.text === "string" ? { title: "Writing rules", detail: clip(d.text, 160) } : { title: "Writing rules (earlier format)", detail: "Saved as separate fields. Restoring it converts it to text." };
-  }
-  const removed = s.is_active === false;
-  return { title: `${roleLabel(String(s.role))} · ${s.kind === "bad" ? "bad" : "good"} example${removed ? " (removed)" : ""}`, detail: clip(s.subject, 80) ? `${clip(s.subject, 80)} — ${clip(s.body, 100)}` : clip(s.body, 160) };
+  if (v.kind === "prompt") return { title: promptTitle(v.ref), detail: clip(s.body, 160) };
+  const d = (s.data ?? {}) as { text?: unknown };
+  return typeof d.text === "string" ? { title: "Writing rules", detail: clip(d.text, 160) } : { title: "Writing rules (earlier format)", detail: "Saved as separate fields. Restoring it converts it to text." };
 }
 
 // Settings -> AI -> History. Admin only: every saved change, with the option to put an older one back.
@@ -46,7 +43,7 @@ export default async function AiHistoryPage({ searchParams }: { searchParams: Pr
 
   return (
     <div className="mx-auto w-full max-w-3xl space-y-6 p-6 lg:p-8">
-      <AiHeader description="Every change to the knowledge, rules and examples is kept here. Restoring puts an older version back and is itself saved." />
+      <AiHeader description="Every change to the knowledge, rules and prompts is kept here. Restoring puts an older version back and is itself saved." />
 
       <div className="flex flex-wrap gap-2">
         {KINDS.map((k) => (

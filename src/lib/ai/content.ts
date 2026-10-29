@@ -2,9 +2,11 @@ import type { Client } from "pg";
 import { query } from "@/lib/db";
 import { getCurrentUser } from "@/lib/current-user";
 import { KNOWLEDGE_BODY_MAX, KNOWLEDGE_TOPICS, serviceKey } from "./knowledge-format";
-import { DEFAULT_RULES_TEXT, RULES_TEXT_MAX, normalizeRole, rulesText, type RoleKey } from "./rules-format";
+import { PROMPTS, PROMPT_BODY_MAX, PROMPT_KEYS } from "./prompts-format";
+import { DEFAULT_RULES_TEXT, RULES_TEXT_MAX, rulesText } from "./rules-format";
 
-export type Kind = "knowledge" | "rules" | "example";
+// "example" belongs to the Examples tab, which is switched off. Its old history rows are kept but can't be restored.
+export type Kind = "knowledge" | "rules" | "prompt" | "example";
 
 export async function requireAdmin() {
   const actor = await getCurrentUser();
@@ -91,62 +93,39 @@ export async function saveRules(client: Client, text: string, userId: number | s
   await addVersion(client, "rules", "rules", { data: { text } }, userId);
 }
 
-// ---- Examples ----
+// ---- Prompts ----
 
-export type Example = { id: string; role: RoleKey; audience: string; subject: string; body: string; kind: "good" | "bad"; note: string };
-export type ExampleInput = Omit<Example, "id">;
+export type PromptEntry = { key: string; body: string; updated_at: string | null; updated_by: string | null };
 
-export async function fetchExamples(): Promise<Example[]> {
-  return query<Example>("SELECT id::text, role, audience, subject, body, kind, note FROM ai_examples WHERE is_active ORDER BY kind DESC, role, id");
-}
-
-export async function fetchAudiences(): Promise<string[]> {
-  const rows = await query<{ value: string }>("SELECT value FROM picklist_values WHERE field_name = 'company_type' AND is_active ORDER BY sort_order, value");
-  return rows.map((r) => r.value);
-}
-
-export function checkExample(v: unknown): { error: string } | { value: ExampleInput } {
-  const o = (v ?? {}) as Record<string, unknown>;
-  const str = (x: unknown) => (typeof x === "string" ? x.replace(/\r\n/g, "\n").trim() : "");
-  const exRole = normalizeRole(str(o.role));
-  if (!exRole) return { error: "Choose what kind of step this is." };
-  const kind = o.kind === "bad" ? "bad" : "good";
-  const subject = str(o.subject);
-  const body = str(o.body);
-  const note = str(o.note);
-  const audience = str(o.audience) || "any";
-  if (!body) return { error: "Paste the text of the example." };
-  if (body.length > 3000) return { error: "The example is too long. Keep it under 3,000 characters." };
-  if (subject.length > 200) return { error: "The subject is too long." };
-  if (note.length > 500) return { error: "The note is too long. Keep it under 500 characters." };
-  if (audience.length > 60) return { error: "Choose an audience from the list." };
-  return { value: { role: exRole, audience, subject, body, kind, note } };
-}
-
-const exampleSnapshot = (e: ExampleInput & { is_active: boolean }) => ({ role: e.role, audience: e.audience, subject: e.subject, body: e.body, kind: e.kind, note: e.note, is_active: e.is_active });
-
-export async function createExample(client: Client, e: ExampleInput, userId: number | string): Promise<string> {
-  const { rows } = await client.query("INSERT INTO ai_examples (role, audience, subject, body, kind, note, updated_by) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id::text", [
-    e.role,
-    e.audience,
-    e.subject,
-    e.body,
-    e.kind,
-    e.note,
-    userId,
-  ]);
-  await addVersion(client, "example", rows[0].id, exampleSnapshot({ ...e, is_active: true }), userId);
-  return rows[0].id;
-}
-
-export async function updateExample(client: Client, id: string, e: ExampleInput, active: boolean, userId: number | string): Promise<boolean> {
-  const { rowCount } = await client.query(
-    "UPDATE ai_examples SET role=$2, audience=$3, subject=$4, body=$5, kind=$6, note=$7, is_active=$8, updated_by=$9, updated_at=now() WHERE id=$1",
-    [id, e.role, e.audience, e.subject, e.body, e.kind, e.note, active, userId],
+// Every prompt, in display order. One that was never saved shows its starting text.
+export async function fetchPrompts(): Promise<PromptEntry[]> {
+  const rows = await query<{ key: string; body: string; updated_at: string; updated_by: string | null }>(
+    "SELECT p.key, p.body, p.updated_at, u.name AS updated_by FROM ai_prompts p LEFT JOIN users u ON u.id = p.updated_by",
   );
-  if (!rowCount) return false;
-  await addVersion(client, "example", id, exampleSnapshot({ ...e, is_active: active }), userId);
-  return true;
+  const byKey = new Map(rows.map((r) => [r.key, r]));
+  return PROMPTS.map((p) => {
+    const r = byKey.get(p.key);
+    return { key: p.key, body: r?.body ?? p.defaultBody, updated_at: r?.updated_at ?? null, updated_by: r?.updated_by ?? null };
+  });
+}
+
+export const isPromptKey = (key: string) => PROMPT_KEYS.includes(key);
+
+export function checkPromptBody(v: unknown): { error: string } | { value: string } {
+  if (typeof v !== "string") return { error: "Write the prompt." };
+  const body = v.replace(/\r\n/g, "\n").trim();
+  if (!body) return { error: "The prompt can't be empty." };
+  if (body.length > PROMPT_BODY_MAX) return { error: `That is ${body.length.toLocaleString()} characters. Keep it under ${PROMPT_BODY_MAX.toLocaleString()}.` };
+  return { value: body };
+}
+
+export async function savePrompt(client: Client, key: string, body: string, userId: number | string) {
+  await client.query(
+    `INSERT INTO ai_prompts (key, body, updated_by) VALUES ($1,$2,$3)
+     ON CONFLICT (key) DO UPDATE SET body = EXCLUDED.body, updated_by = EXCLUDED.updated_by, updated_at = now()`,
+    [key, body, userId],
+  );
+  await addVersion(client, "prompt", key, { body }, userId);
 }
 
 // ---- History ----

@@ -7,7 +7,7 @@ const TABS = [
   { href: "/settings/ai", label: "Providers & usage" },
   { href: "/settings/ai/knowledge", label: "Knowledge" },
   { href: "/settings/ai/rules", label: "Writing rules" },
-  { href: "/settings/ai/examples", label: "Examples" },
+  { href: "/settings/ai/prompts", label: "Prompts" },
 ];
 
 // Title and the tab row shown at the top of every Settings -> AI page.
