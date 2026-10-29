@@ -57,6 +57,9 @@ export function TaskEmail({ taskId, status, canAct, mail, senderName, senderEmai
 
   const fill = (t: string) => fillPlaceholders(t, { first_name: mail.first_name, company_name: mail.company_name, city: mail.city, sender_name: senderName });
   const baselineBody = hasBaseline ? fill(mail.baseline_body) : "";
+  // A draft that still has a name in curly braces (the AI sometimes copies one from the baseline) is shown, and used, with the name filled in.
+  const filledDrafts = drafts.map((d) => ({ ...d, subject: fill(d.subject), body: fill(d.body) }));
+  const KNOWN = ["{first_name}", "{company_name}", "{city}", "{sender_name}"];
 
   function start(from: "baseline" | "ai" | "human", text?: { subject: string; body: string }) {
     const s = text ? text.subject : from === "baseline" ? fill(mail.baseline_subject) : "";
@@ -195,7 +198,7 @@ export function TaskEmail({ taskId, status, canAct, mail, senderName, senderEmai
           </div>
           {thin && <p className="rounded-md bg-amber-50 px-2.5 py-1.5 text-xs text-amber-900">The CRM has few facts about this company, so the email stays close to the baseline.</p>}
           <div className={`grid gap-3 ${drafts.length > 1 ? "xl:grid-cols-2" : ""}`}>
-            {drafts.map((d, i) => {
+            {filledDrafts.map((d, i) => {
               const warn = [...new Set([...d.warnings, ...leftoverPlaceholders(`${d.subject}\n${d.body}`).map((p) => `Still has ${p} to fill in.`)])];
               return (
                 <article key={d.id} className="flex flex-col rounded-lg border border-zinc-200 bg-white p-3">
@@ -265,7 +268,16 @@ export function TaskEmail({ taskId, status, canAct, mail, senderName, senderEmai
             <span className="text-xs font-medium text-zinc-500">Email</span>
             <textarea rows={10} maxLength={10000} value={body} onChange={(e) => edit({ body: e.target.value })} className={field} />
           </label>
-          {leftover.length > 0 && <p className="text-xs text-amber-700">Still to fill in: {leftover.join(", ")}</p>}
+          {leftover.length > 0 && (
+            <p className="text-xs text-amber-700">
+              Still to fill in: {leftover.join(", ")}
+              {leftover.some((p) => KNOWN.includes(p)) && (
+                <button type="button" onClick={() => edit({ subject: fill(subject), body: fill(body) })} className="ml-2 rounded-md border border-amber-300 bg-white px-2 py-0.5 font-medium text-amber-900 hover:bg-amber-50">
+                  Fill in the names
+                </button>
+              )}
+            </p>
+          )}
           <div className="flex flex-wrap items-center gap-2">
             <button type="button" onClick={() => copy("subject")} className="rounded-md border border-zinc-300 px-2.5 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-50">
               {copied === "subject" ? "Copied" : "Copy subject"}

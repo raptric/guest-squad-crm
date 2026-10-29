@@ -56,6 +56,7 @@ export const CODES: CodeDef[] = [
   co("Company", "company.name", "Company name"),
   co("Company", "company.type", "Company type"),
   co("Company", "company.website", "Website"),
+  co("Company", "company.city", "City"),
   co("Company", "company.location", "City, state, country"),
   co("Company", "company.address", "Full address"),
   co("Company", "company.phone", "Phone"),

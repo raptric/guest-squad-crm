@@ -1,6 +1,6 @@
 import { withTransaction } from "@/lib/db";
 import { getTaskForAction } from "@/lib/campaigns";
-import { isEmailChannel } from "@/lib/campaign-messages-format";
+import { fillPlaceholders, isEmailChannel } from "@/lib/campaign-messages-format";
 import { renderTemplate } from "./codes-format";
 import { buildValues, type ContactChoice } from "./context";
 import { check, COMPANY_TAIL, GenerateError, parseVersions, prepare, runAi, type Version } from "./generate";
@@ -47,7 +47,14 @@ export async function generateForCompany(input: { actor: Actor; taskId: number; 
   const extra = input.instruction.replace(/\s+/g, " ").trim().slice(0, 300);
   const prompt = `${renderTemplate(rt.template, values).text}\n${COMPANY_TAIL(rt.variants, extra)}`;
 
-  const { value } = await runAi(actor, rt, "company_copy", prompt, (r) => parseVersions(r, rt.variants).map((v) => ({ ...check(v, task.step_channel, []), facts_used: v.facts_used, notes: v.notes })));
+  // The AI sometimes copies a placeholder from the baseline instead of replacing it. The names are known, so fill them in here.
+  const names = { first_name: values["contact.first_name"] ?? "", company_name: values["company.name"] ?? "", city: values["company.city"] ?? "", sender_name: actor.name };
+  const { value } = await runAi(actor, rt, "company_copy", prompt, (r) =>
+    parseVersions(r, rt.variants).map((v) => {
+      const filled = { ...v, subject: fillPlaceholders(v.subject, names), body: fillPlaceholders(v.body, names) };
+      return { ...check(filled, task.step_channel, []), facts_used: v.facts_used, notes: v.notes };
+    }),
+  );
 
   const saved = await withTransaction(async (client) => {
     await client.query("UPDATE campaign_messages SET status = 'void' WHERE task_id = $1 AND status = 'draft'", [task.id]);

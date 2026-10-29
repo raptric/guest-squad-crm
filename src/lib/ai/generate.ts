@@ -111,7 +111,7 @@ export const COMPANY_TAIL = (versions: number, extra: string) =>
     '- "notes": one short sentence for the person if something needs their attention (for example that nothing relevant was found, so the baseline opening was kept). Otherwise an empty string.',
     "Rules that always apply:",
     "- Use only the facts given above. Never invent numbers, names, customers or results. If something is not given, leave it out.",
-    "- Write real names and values. Do not leave any curly-brace placeholders.",
+    "- The baseline may contain placeholders in curly braces, such as {company_name} or {first_name}. Replace each one with the real value. Never leave a curly-brace placeholder in the email.",
     '- "subject" is one line. "body" is plain text with line breaks, no markdown.',
     ...(extra ? [`- The person sending this email asked for: ${extra}`] : []),
   ].join("\n");

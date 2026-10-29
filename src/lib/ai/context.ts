@@ -229,6 +229,7 @@ async function companyValues(companyId: number, campaignId: string, notes: strin
     "company.name": s(c.name),
     "company.type": s(c.company_type),
     "company.website": s(c.website),
+    "company.city": s(c.city),
     "company.location": location,
     "company.address": address,
     "company.phone": s(c.phone),
