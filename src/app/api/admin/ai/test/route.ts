@@ -25,7 +25,13 @@ export async function POST(request: Request) {
   if (!creds.model) return fail("Choose a model first.");
 
   try {
-    const r = await generate(provider, creds.apiKey, creds.model, { prompt: "Reply with the single word OK.", maxTokens: 16 });
+    const r = await generate(provider, creds.apiKey, creds.model, { prompt: "Reply with the single word OK.", maxTokens: 256 });
+    // A connection that answers with nothing is not working, even though the service said yes.
+    if (!r.text.trim()) {
+      const message = "The model answered, but with an empty reply. Try again, or choose a different model.";
+      await logAiUsage({ userId: actor.id, provider, model: creds.model, purpose: "test", inputTokens: r.inputTokens, outputTokens: r.outputTokens, ok: false, error: `empty reply (stop: ${r.stop ?? "unknown"})` });
+      return fail(message, 502);
+    }
     await logAiUsage({ userId: actor.id, provider, model: creds.model, purpose: "test", inputTokens: r.inputTokens, outputTokens: r.outputTokens, ok: true });
     return NextResponse.json({ ok: true, reply: r.text.trim().slice(0, 40), ms: r.ms });
   } catch (e) {

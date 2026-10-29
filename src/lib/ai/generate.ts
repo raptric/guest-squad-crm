@@ -5,12 +5,13 @@ import { parseCriteria, type CampaignStep } from "@/lib/campaigns";
 import { fetchPrompts } from "./content";
 import { renderTemplate } from "./codes-format";
 import { buildValuesForDraft, type DraftCampaign } from "./context";
-import { AiError, generate, isProviderId, type ProviderId } from "./providers";
+import { AiError, generate, isProviderId, type AiResult, type ProviderId } from "./providers";
 import { decryptKey } from "./crypto";
 import { logAiUsage } from "./settings";
 
 export class GenerateError extends Error {
-  constructor(message: string, readonly status: number) {
+  // detail is for the usage log (what actually came back); the message is what the person sees
+  constructor(message: string, readonly status: number, readonly detail?: string) {
     super(message);
   }
 }
@@ -98,16 +99,28 @@ const TAIL = (versions: number, extra: string) =>
     ...(extra ? [`- The person writing this campaign asked for: ${extra}`] : []),
   ].join("\n");
 
-function parseVersions(text: string, max: number): { subject: string; body: string }[] {
-  const t = text.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
+function parseVersions(result: AiResult, max: number): { subject: string; body: string }[] {
+  const t = result.text.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
+  const peek = t.replace(/\s+/g, " ").slice(0, 160);
+  if (!t) {
+    if (result.stop === "length") {
+      throw new GenerateError(
+        "The AI ran out of room before it finished writing. Try again, or ask an admin to choose a different model in Settings → AI.",
+        502,
+        `empty reply, the model hit its length limit (${result.outputTokens ?? "?"} tokens used)`,
+      );
+    }
+    throw new GenerateError("The AI sent back nothing. Try again.", 502, `empty reply (stop: ${result.stop ?? "unknown"})`);
+  }
+  const unreadable = () => new GenerateError("The AI's reply could not be read. Try again.", 502, `unreadable reply (stop: ${result.stop ?? "unknown"}): ${peek}`);
   const open = t.search(/[[{]/);
-  if (open < 0) throw new GenerateError("The AI's reply could not be read. Try again.", 502);
+  if (open < 0) throw unreadable();
   const close = Math.max(t.lastIndexOf("}"), t.lastIndexOf("]"));
   let data: unknown;
   try {
     data = JSON.parse(t.slice(open, close + 1));
   } catch {
-    throw new GenerateError("The AI's reply could not be read. Try again.", 502);
+    throw unreadable();
   }
   const arr = Array.isArray(data) ? data : (data as { versions?: unknown })?.versions;
   const out = (Array.isArray(arr) ? arr : [])
@@ -166,22 +179,14 @@ export async function generateBaseline(input: { actor: Actor; campaign: DraftCam
   const extra = input.instruction.replace(/\s+/g, " ").trim().slice(0, 300);
   const prompt = `${renderTemplate(template, values).text}\n${TAIL(settings.variants, extra)}`;
 
-  const call = (temperature?: number) => generate(provider as ProviderId, apiKey, model, { prompt, maxTokens: 3000, temperature });
   try {
-    let result;
-    try {
-      result = await call(TEMPERATURE[settings.creativity] ?? 0.7);
-    } catch (e) {
-      // Some models do not accept a temperature setting. Try once without it.
-      if (e instanceof AiError && e.status === 400) result = await call(undefined);
-      else throw e;
-    }
-    const versions = parseVersions(result.text, settings.variants).map((v) => check(v, step.channel));
+    const result = await generate(provider as ProviderId, apiKey, model, { prompt, maxTokens: 3000, temperature: TEMPERATURE[settings.creativity] ?? 0.7, json: true });
+    const versions = parseVersions(result, settings.variants).map((v) => check(v, step.channel));
     await logAiUsage({ userId: actor.id, provider, model, purpose: "campaign_copy", inputTokens: result.inputTokens, outputTokens: result.outputTokens, ok: true });
     return { versions, remaining: Math.max(0, settings.daily_limit - used - 1), tokens: result.inputTokens !== null && result.outputTokens !== null ? result.inputTokens + result.outputTokens : null };
   } catch (e) {
     const message = e instanceof AiError || e instanceof GenerateError ? e.message : "The AI could not write this. Try again.";
-    await logAiUsage({ userId: actor.id, provider, model, purpose: "campaign_copy", ok: false, error: message });
+    await logAiUsage({ userId: actor.id, provider, model, purpose: "campaign_copy", ok: false, error: e instanceof GenerateError && e.detail ? e.detail : message });
     if (e instanceof GenerateError) throw e;
     throw new GenerateError(message, 502);
   }

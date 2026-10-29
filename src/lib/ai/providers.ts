@@ -11,7 +11,8 @@ export class AiError extends Error {
   }
 }
 
-export type AiResult = { text: string; inputTokens: number | null; outputTokens: number | null; ms: number };
+// stop is why the model stopped: "length" means it ran out of room before it finished.
+export type AiResult = { text: string; inputTokens: number | null; outputTokens: number | null; ms: number; stop: string | null };
 
 const TIMEOUT_MS = 60_000;
 
@@ -54,36 +55,84 @@ const authHeaders = (provider: ProviderId, apiKey: string): Record<string, strin
     ? { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" }
     : { authorization: `Bearer ${apiKey}`, "content-type": "application/json" };
 
-type Message = { system?: string; prompt: string; maxTokens: number; temperature?: number };
+type Message = {
+  system?: string;
+  prompt: string;
+  maxTokens: number; // the length of the answer itself; thinking models get extra room on top
+  temperature?: number;
+  json?: boolean; // the answer must be a JSON object
+};
+
+// Models differ in what they accept: reasoning models refuse a temperature, older ones refuse a reasoning setting. When a
+// service answers "bad request", the next, plainer set of options is tried, so a new or unusual model still works.
+type Options = { temperature: number | undefined; reasoning: boolean; json: boolean };
 
 // One request, one text answer.
 export async function generate(provider: ProviderId, apiKey: string, model: string, m: Message): Promise<AiResult> {
   const started = Date.now();
+  const same = (a: Options, b: Options) => a.temperature === b.temperature && a.reasoning === b.reasoning && a.json === b.json;
+
   if (provider === "anthropic") {
-    const body: Record<string, unknown> = { model, max_tokens: m.maxTokens, messages: [{ role: "user", content: m.prompt }] };
-    if (m.system) body.system = m.system;
-    if (m.temperature !== undefined) body.temperature = m.temperature;
-    const json = (await call(provider, `${BASE.anthropic}/v1/messages`, { method: "POST", headers: authHeaders(provider, apiKey), body: JSON.stringify(body) })) as {
-      content?: { type: string; text?: string }[];
-      usage?: { input_tokens?: number; output_tokens?: number };
-    };
-    const text = (json.content ?? []).filter((c) => c.type === "text").map((c) => c.text ?? "").join("");
-    return { text, inputTokens: json.usage?.input_tokens ?? null, outputTokens: json.usage?.output_tokens ?? null, ms: Date.now() - started };
+    const ladder: Options[] = [
+      { temperature: m.temperature, reasoning: false, json: false },
+      { temperature: undefined, reasoning: false, json: false },
+    ].filter((o, i, all) => all.findIndex((x) => same(x, o)) === i);
+    let last: unknown;
+    for (const o of ladder) {
+      const body: Record<string, unknown> = { model, max_tokens: m.maxTokens, messages: [{ role: "user", content: m.prompt }] };
+      if (m.system) body.system = m.system;
+      if (o.temperature !== undefined) body.temperature = o.temperature;
+      try {
+        const json = (await call(provider, `${BASE.anthropic}/v1/messages`, { method: "POST", headers: authHeaders(provider, apiKey), body: JSON.stringify(body) })) as {
+          content?: { type: string; text?: string }[];
+          usage?: { input_tokens?: number; output_tokens?: number };
+          stop_reason?: string;
+        };
+        const text = (json.content ?? []).filter((c) => c.type === "text").map((c) => c.text ?? "").join("");
+        return { text, inputTokens: json.usage?.input_tokens ?? null, outputTokens: json.usage?.output_tokens ?? null, ms: Date.now() - started, stop: json.stop_reason === "max_tokens" ? "length" : (json.stop_reason ?? null) };
+      } catch (e) {
+        last = e;
+        if (!(e instanceof AiError && e.status === 400)) throw e;
+      }
+    }
+    throw last;
   }
 
+  // OpenAI. gpt-5 and the o-series think before they answer, and the thinking is paid for out of the same token limit. With a
+  // small limit all of it goes on thinking and the answer comes back empty, so they get a much larger limit and the least
+  // thinking the model allows.
+  const thinks = /^(gpt-5|o\d)/.test(model);
+  const effort = /^gpt-5/.test(model) ? "minimal" : "low";
+  const ladder: Options[] = [
+    { temperature: m.temperature, reasoning: thinks, json: Boolean(m.json) },
+    { temperature: undefined, reasoning: thinks, json: Boolean(m.json) },
+    { temperature: undefined, reasoning: false, json: false },
+  ].filter((o, i, all) => all.findIndex((x) => same(x, o)) === i);
   const messages = [...(m.system ? [{ role: "system", content: m.system }] : []), { role: "user", content: m.prompt }];
-  const body: Record<string, unknown> = { model, messages, max_completion_tokens: m.maxTokens };
-  if (m.temperature !== undefined) body.temperature = m.temperature;
-  const json = (await call(provider, `${BASE.openai}/v1/chat/completions`, { method: "POST", headers: authHeaders(provider, apiKey), body: JSON.stringify(body) })) as {
-    choices?: { message?: { content?: string | null } }[];
-    usage?: { prompt_tokens?: number; completion_tokens?: number };
-  };
-  return {
-    text: json.choices?.[0]?.message?.content ?? "",
-    inputTokens: json.usage?.prompt_tokens ?? null,
-    outputTokens: json.usage?.completion_tokens ?? null,
-    ms: Date.now() - started,
-  };
+  let last: unknown;
+  for (const o of ladder) {
+    const body: Record<string, unknown> = { model, messages, max_completion_tokens: thinks ? Math.max(m.maxTokens, 16000) : m.maxTokens };
+    if (o.temperature !== undefined) body.temperature = o.temperature;
+    if (o.reasoning) body.reasoning_effort = effort;
+    if (o.json) body.response_format = { type: "json_object" };
+    try {
+      const json = (await call(provider, `${BASE.openai}/v1/chat/completions`, { method: "POST", headers: authHeaders(provider, apiKey), body: JSON.stringify(body) })) as {
+        choices?: { message?: { content?: string | null }; finish_reason?: string }[];
+        usage?: { prompt_tokens?: number; completion_tokens?: number };
+      };
+      return {
+        text: json.choices?.[0]?.message?.content ?? "",
+        inputTokens: json.usage?.prompt_tokens ?? null,
+        outputTokens: json.usage?.completion_tokens ?? null,
+        ms: Date.now() - started,
+        stop: json.choices?.[0]?.finish_reason ?? null,
+      };
+    } catch (e) {
+      last = e;
+      if (!(e instanceof AiError && e.status === 400)) throw e;
+    }
+  }
+  throw last;
 }
 
 // The model names this account can use, so nobody has to guess a spelling.
