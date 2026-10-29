@@ -158,6 +158,9 @@ function EnrollmentBlock({ enrollment: e, playbook, canAct, today, senderName, s
       <ul className="mt-3 divide-y divide-zinc-100">
         {e.tasks.map((t) => {
           const due = dueInfo(t.due_date, today);
+          const actable = canAct && e.status !== "stopped" && !(e.status === "active" && e.campaign_status === "paused");
+          // A pending email step has its Done / Skip inside the email area, next to Send.
+          const actionsInEmail = Boolean(t.mail) && t.status === "pending" && actable;
           return (
             <li key={t.id} className={`space-y-2 py-3 ${t.status === "cancelled" ? "opacity-50" : ""}`}>
               <div className="flex flex-wrap items-center gap-2 text-xs">
@@ -186,8 +189,8 @@ function EnrollmentBlock({ enrollment: e, playbook, canAct, today, senderName, s
                   {t.notes ? `: ${t.notes}` : ""}
                 </p>
               )}
-              {t.mail && <TaskEmail taskId={t.id} status={t.status} canAct={canAct && e.status !== "stopped" && !(e.status === "active" && e.campaign_status === "paused")} mail={t.mail} senderName={senderName} senderEmail={senderEmail} />}
-              <TaskActions taskId={t.id} status={t.status} channel={t.step_channel} canAct={canAct && e.status !== "stopped" && !(e.status === "active" && e.campaign_status === "paused")} />
+              {t.mail && <TaskEmail taskId={t.id} status={t.status} channel={t.step_channel} canAct={actable} mail={t.mail} senderName={senderName} senderEmail={senderEmail} />}
+              {!actionsInEmail && <TaskActions taskId={t.id} status={t.status} channel={t.step_channel} canAct={actable} />}
             </li>
           );
         })}

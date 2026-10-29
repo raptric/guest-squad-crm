@@ -147,6 +147,9 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
           {rows.map((t) => {
             const due = dueInfo(t.due_date, today);
             const mayAct = isAdmin || (t.owner_id !== null && String(t.owner_id) === String(actor.id)) || isLead;
+            const actable = mayAct && t.enrollment_status !== "stopped" && t.campaign_status !== "paused";
+            // A pending email step has its Done / Skip inside the email area, next to Send.
+            const actionsInEmail = Boolean(t.mail) && t.status === "pending" && actable;
             return (
               <li key={t.id} className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
                 <div className="flex flex-wrap items-start justify-between gap-4">
@@ -188,7 +191,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
                       </details>
                     )}
                     <PlaybookPanel playbook={playbooks[t.campaign_id]} />
-                    {t.mail && <TaskEmail taskId={t.id} status={t.status} canAct={mayAct && t.enrollment_status !== "stopped" && t.campaign_status !== "paused"} mail={t.mail} senderName={actor.name} senderEmail={senderEmail} />}
+                    {t.mail && <TaskEmail taskId={t.id} status={t.status} channel={t.step_channel} canAct={actable} mail={t.mail} senderName={actor.name} senderEmail={senderEmail} />}
                     {t.status !== "pending" && (
                       <p className="text-xs text-zinc-500">
                         {t.status === "done" ? "Done" : "Skipped"} by {t.completed_by_name ?? "someone"} {t.completed_at ? timeAgo(t.completed_at) : ""}
@@ -196,7 +199,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
                       </p>
                     )}
                   </div>
-                  <TaskActions taskId={t.id} status={t.status} channel={t.step_channel} canAct={mayAct && t.enrollment_status !== "stopped" && t.campaign_status !== "paused"} />
+                  {!actionsInEmail && <TaskActions taskId={t.id} status={t.status} channel={t.step_channel} canAct={actable} />}
                 </div>
               </li>
             );
