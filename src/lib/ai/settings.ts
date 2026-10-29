@@ -3,17 +3,21 @@ import { decryptKey } from "./crypto";
 import { PROVIDER_IDS, type ProviderId } from "./providers";
 
 export type ProviderSettings = { provider: ProviderId; hasKey: boolean; keyLast4: string | null; model: string; updatedAt: string | null };
-export type AiSettings = { activeProvider: ProviderId | null; dailyLimit: number; providers: ProviderSettings[] };
+export type AiSettings = { activeProvider: ProviderId | null; dailyLimit: number; variants: number; creativity: "low" | "medium" | "high"; providers: ProviderSettings[] };
 
 // What the Settings screen is allowed to see: never the key, only whether one is saved and its last four characters.
 export async function fetchAiSettings(): Promise<AiSettings> {
-  const [settings] = await query<{ active_provider: ProviderId | null; daily_limit: number }>("SELECT active_provider, daily_limit FROM ai_settings WHERE id = 1");
+  const [settings] = await query<{ active_provider: ProviderId | null; daily_limit: number; variants: number; creativity: "low" | "medium" | "high" }>(
+    "SELECT active_provider, daily_limit, variants, creativity FROM ai_settings WHERE id = 1",
+  );
   const rows = await query<{ provider: ProviderId; has_key: boolean; key_last4: string | null; model: string; updated_at: string | null }>(
     "SELECT provider, api_key_enc IS NOT NULL AS has_key, key_last4, model, updated_at FROM ai_providers",
   );
   return {
     activeProvider: settings?.active_provider ?? null,
     dailyLimit: settings?.daily_limit ?? 30,
+    variants: settings?.variants ?? 2,
+    creativity: settings?.creativity ?? "medium",
     providers: PROVIDER_IDS.map((p) => {
       const r = rows.find((x) => x.provider === p);
       return { provider: p, hasKey: r?.has_key ?? false, keyLast4: r?.key_last4 ?? null, model: r?.model ?? "", updatedAt: r?.updated_at ?? null };

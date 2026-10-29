@@ -115,6 +115,13 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
                   </div>
                   <p className="mt-1 font-medium text-zinc-900">{s.title}</p>
                   {s.instructions && <p className="mt-1 whitespace-pre-wrap text-zinc-600">{s.instructions}</p>}
+                  {s.body && (
+                    <details className="mt-2 rounded-lg border border-zinc-200 bg-white p-2.5">
+                      <summary className="cursor-pointer text-xs font-medium text-sky-700">Baseline email</summary>
+                      {s.subject && <p className="mt-2 text-sm font-medium text-zinc-900">Subject: {s.subject}</p>}
+                      <p className="mt-1 whitespace-pre-wrap text-sm text-zinc-700">{s.body}</p>
+                    </details>
+                  )}
                 </li>
               ))}
             </ol>

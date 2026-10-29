@@ -41,6 +41,6 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const resolved = await resolveCampaignInput(actor, input, { ...existing, criteria: criteriaOf(existing) });
   if ("error" in resolved) return fail(resolved.error);
 
-  await updateCampaign(Number(id), input, resolved.value);
+  await updateCampaign(Number(id), input, resolved.value, actor.id);
   return NextResponse.json({ ok: true });
 }

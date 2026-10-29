@@ -2,13 +2,28 @@ import type { Client } from "pg";
 import { withTransaction } from "@/lib/db";
 import type { CampaignInput, ResolvedCampaign } from "@/lib/campaigns";
 
-async function writeSteps(client: Client, campaignId: number | string, input: CampaignInput) {
+// Steps are replaced on every save. A baseline email that is unchanged (same subject and text) keeps who saved it and when;
+// new or changed text is credited to the person saving now.
+async function writeSteps(client: Client, campaignId: number | string, input: CampaignInput, actorId: number | string) {
+  const before = (await client.query("SELECT subject, body, copy_by, copy_at FROM campaign_steps WHERE campaign_id = $1", [campaignId])).rows as {
+    subject: string;
+    body: string;
+    copy_by: string | null;
+    copy_at: string | null;
+  }[];
+  const known = new Map(before.filter((r) => r.body).map((r) => [`${r.subject}\u0000${r.body}`, r]));
   await client.query("DELETE FROM campaign_steps WHERE campaign_id = $1", [campaignId]);
   for (let i = 0; i < input.steps.length; i++) {
     const s = input.steps[i];
+    const kept = s.body ? known.get(`${s.subject}\u0000${s.body}`) : undefined;
     await client.query(
-      "INSERT INTO campaign_steps (campaign_id, position, day_number, channel, title, instructions) VALUES ($1, $2, $3, $4, $5, $6)",
-      [campaignId, i + 1, s.day_number, s.channel, s.title, s.instructions]
+      `INSERT INTO campaign_steps (campaign_id, position, day_number, channel, title, instructions, subject, body, copy_source, copy_by, copy_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+      [
+        campaignId, i + 1, s.day_number, s.channel, s.title, s.instructions, s.subject, s.body, s.copy_source,
+        s.body ? (kept ? kept.copy_by : actorId) : null,
+        s.body ? (kept ? kept.copy_at : new Date().toISOString()) : null,
+      ]
     );
   }
 }
@@ -30,13 +45,13 @@ export async function createCampaign(actorId: number | string, input: CampaignIn
         ]
       )
     ).rows[0];
-    await writeSteps(client, row.id, input);
+    await writeSteps(client, row.id, input, actorId);
     return { id: Number(row.id), code: row.code as string };
   });
 }
 
 // Replaces a campaign's details. Existing tasks keep the steps they were created with.
-export async function updateCampaign(id: number, input: CampaignInput, resolved: ResolvedCampaign) {
+export async function updateCampaign(id: number, input: CampaignInput, resolved: ResolvedCampaign, actorId: number | string) {
   return withTransaction(async (client) => {
     await client.query(
       `UPDATE campaigns SET name = $1, description = $2, owner_id = $3, visibility = $4, team_id = $5, outreach_angle = $6, pain_point = $7,
@@ -51,7 +66,7 @@ export async function updateCampaign(id: number, input: CampaignInput, resolved:
         input.criteria.portfolio, input.criteria.countries, id,
       ]
     );
-    await writeSteps(client, id, input);
+    await writeSteps(client, id, input, actorId);
   });
 }
 
@@ -71,8 +86,8 @@ export async function duplicateCampaign(sourceId: number, actorId: number | stri
       )
     ).rows[0];
     await client.query(
-      `INSERT INTO campaign_steps (campaign_id, position, day_number, channel, title, instructions)
-       SELECT $2, position, day_number, channel, title, instructions FROM campaign_steps WHERE campaign_id = $1`,
+      `INSERT INTO campaign_steps (campaign_id, position, day_number, channel, title, instructions, subject, body, copy_source, copy_by, copy_at)
+       SELECT $2, position, day_number, channel, title, instructions, subject, body, copy_source, copy_by, copy_at FROM campaign_steps WHERE campaign_id = $1`,
       [sourceId, row.id]
     );
     return { id: Number(row.id), code: row.code as string };

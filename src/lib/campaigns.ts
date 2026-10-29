@@ -8,7 +8,9 @@ import { audienceSummary, EMPTY_CRITERIA, type Criteria, type Portfolio } from "
 export const READY_FOR_OUTREACH = "Ready for Outreach";
 export const TODAY_SQL = "(now() AT TIME ZONE 'UTC')::date";
 
-export type StepInput = { day_number: number; channel: string; title: string; instructions: string };
+export type CopySource = "ai" | "edited" | "human";
+export const EMAIL_CHANNELS = ["Initial Email", "Follow-up Email"] as const;
+export type StepInput = { day_number: number; channel: string; title: string; instructions: string; subject: string; body: string; copy_source: CopySource | null };
 export type CampaignInput = {
   name: string;
   description: string;
@@ -35,6 +37,26 @@ const text = (v: unknown, max: number, label: string): { value: string } | { err
 };
 const strings = (v: unknown, max: number) =>
   Array.isArray(v) ? [...new Set(v.filter((x): x is string => typeof x === "string").map((x) => x.trim()).filter(Boolean))].slice(0, max) : [];
+
+export function parseCriteria(raw: unknown): { value: Criteria } | { error: string } {
+  const crit = (raw ?? {}) as Record<string, unknown>;
+  const roomsOf = (v: unknown) => (v === null || v === undefined || v === "" ? null : Number(v));
+  const roomsMin = roomsOf(crit.rooms_min);
+  const roomsMax = roomsOf(crit.rooms_max);
+  for (const r of [roomsMin, roomsMax]) if (r !== null && (!Number.isInteger(r) || r < 0 || r > 100000)) return { error: "Rooms must be whole numbers from 0 to 100,000." };
+  if (roomsMin !== null && roomsMax !== null && roomsMin > roomsMax) return { error: "The minimum rooms can't be above the maximum." };
+  return {
+    value: {
+      // a campaign aims at one kind of company
+      company_types: strings(crit.company_types, 1),
+      property_types: strings(crit.property_types, 30),
+      rooms_min: roomsMin,
+      rooms_max: roomsMax,
+      portfolio: (["independent", "portfolio"].includes(String(crit.portfolio)) ? crit.portfolio : "any") as Portfolio,
+      countries: strings(crit.countries, 40),
+    },
+  };
+}
 
 // Shape and length checks only; who may do what, and the Settings lists, are checked in resolveCampaignInput.
 export function parseCampaignInput(body: unknown): { value: CampaignInput } | { error: string } {
@@ -63,7 +85,14 @@ export function parseCampaignInput(body: unknown): { value: CampaignInput } | { 
     if (title.length > 200) return { error: `Step ${n}: the title must be 200 characters or fewer.` };
     const instructions = typeof s.instructions === "string" ? s.instructions.trim() : "";
     if (instructions.length > 4000) return { error: `Step ${n}: the instructions must be 4,000 characters or fewer.` };
-    parsed.push({ day_number: day, channel: s.channel, title, instructions });
+    // The baseline email only exists on email steps.
+    const isEmail = (EMAIL_CHANNELS as readonly string[]).includes(s.channel);
+    const subject = isEmail && typeof s.subject === "string" ? s.subject.replace(/\s+/g, " ").trim() : "";
+    const body = isEmail && typeof s.body === "string" ? s.body.replace(/\r\n/g, "\n").trim() : "";
+    if (subject.length > 200) return { error: `Step ${n}: the subject must be 200 characters or fewer.` };
+    if (body.length > 6000) return { error: `Step ${n}: the email must be 6,000 characters or fewer.` };
+    const copySource: CopySource | null = body && (s.copy_source === "ai" || s.copy_source === "edited") ? s.copy_source : body ? "human" : null;
+    parsed.push({ day_number: day, channel: s.channel, title, instructions, subject, body, copy_source: copySource });
   }
   // Ordered by day (the order they were entered breaks ties).
   const ordered = parsed.map((s, i) => ({ s, i })).sort((a, b) => a.s.day_number - b.s.day_number || a.i - b.i).map((x) => x.s);
@@ -80,21 +109,9 @@ export function parseCampaignInput(body: unknown): { value: CampaignInput } | { 
   const secondaryOther = secondaryPicked.includes("Other") ? secondaryOtherText.value : "";
   const differentiatorsOther = diffsPicked.includes("Other") ? diffsOtherText.value : "";
 
-  const crit = (b.criteria ?? {}) as Record<string, unknown>;
-  const roomsOf = (v: unknown) => (v === null || v === undefined || v === "" ? null : Number(v));
-  const roomsMin = roomsOf(crit.rooms_min);
-  const roomsMax = roomsOf(crit.rooms_max);
-  for (const r of [roomsMin, roomsMax]) if (r !== null && (!Number.isInteger(r) || r < 0 || r > 100000)) return { error: "Rooms must be whole numbers from 0 to 100,000." };
-  if (roomsMin !== null && roomsMax !== null && roomsMin > roomsMax) return { error: "The minimum rooms can't be above the maximum." };
-  const criteria: Criteria = {
-    // a campaign aims at one kind of company
-    company_types: strings(crit.company_types, 1),
-    property_types: strings(crit.property_types, 30),
-    rooms_min: roomsMin,
-    rooms_max: roomsMax,
-    portfolio: (["independent", "portfolio"].includes(String(crit.portfolio)) ? crit.portfolio : "any") as Portfolio,
-    countries: strings(crit.countries, 40),
-  };
+  const parsedCriteria = parseCriteria(b.criteria);
+  if ("error" in parsedCriteria) return parsedCriteria;
+  const criteria = parsedCriteria.value;
 
   const visibility = b.visibility === "team" || b.visibility === "public" ? b.visibility : "private";
   const angle = typeof b.outreach_angle === "string" && b.outreach_angle.trim() ? b.outreach_angle.trim() : null;
@@ -257,7 +274,18 @@ export async function fetchCampaignList(actor: Actor): Promise<CampaignRow[]> {
   return rows.map((r) => ({ ...r, audience: audienceSummary(criteriaOf(r)), can_manage: canManageCampaign(actor, r.owner_id) }));
 }
 
-export type CampaignStep = { id?: string; day_number: number; channel: string; title: string; instructions: string };
+export type CampaignStep = {
+  id?: string;
+  day_number: number;
+  channel: string;
+  title: string;
+  instructions: string;
+  subject?: string;
+  body?: string;
+  copy_source?: CopySource | null;
+  copy_by_name?: string | null;
+  copy_at?: string | null;
+};
 export type Playbook = {
   outreach_angle: string | null;
   pain_point: string;
@@ -307,7 +335,11 @@ export async function fetchCampaign(id: string, actor: Actor): Promise<CampaignW
     params
   );
   if (!row) return null;
-  const steps = await query<CampaignStep>("SELECT id, day_number, channel, title, instructions FROM campaign_steps WHERE campaign_id = $1 ORDER BY position", [id]);
+  const steps = await query<CampaignStep>(
+    `SELECT s.id, s.day_number, s.channel, s.title, s.instructions, s.subject, s.body, s.copy_source, u.name AS copy_by_name, s.copy_at
+       FROM campaign_steps s LEFT JOIN users u ON u.id = s.copy_by WHERE s.campaign_id = $1 ORDER BY s.position`,
+    [id]
+  );
   const { outreach_angle, pain_point, secondary_pains, secondary_other, positioning, differentiators, differentiators_other, call_to_action, target_company_types, target_property_types, rooms_min, rooms_max, target_portfolio, target_countries, ...rest } = row;
   return {
     ...rest,

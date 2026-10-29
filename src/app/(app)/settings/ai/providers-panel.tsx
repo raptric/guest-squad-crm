@@ -176,33 +176,61 @@ function ProviderCard({ p, active, secretReady }: { p: ProviderSettings; active:
   );
 }
 
-function Limit({ dailyLimit }: { dailyLimit: number }) {
+function Writing({ settings }: { settings: AiSettings }) {
   const router = useRouter();
-  const [value, setValue] = useState(String(dailyLimit));
+  const [limit, setLimit] = useState(String(settings.dailyLimit));
+  const [variants, setVariants] = useState(String(settings.variants));
+  const [creativity, setCreativity] = useState<string>(settings.creativity);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<Note>(null);
+  const changed = limit !== String(settings.dailyLimit) || variants !== String(settings.variants) || creativity !== settings.creativity;
 
   async function save() {
     setBusy(true);
     setNote(null);
-    const r = await send("/api/admin/ai/settings", "PATCH", { daily_limit: Number(value) });
+    const r = await send("/api/admin/ai/settings", "PATCH", { daily_limit: Number(limit), variants: Number(variants), creativity });
     setBusy(false);
     setNote(r.ok ? { kind: "ok", text: "Saved." } : { kind: "error", text: String(r.data.error ?? "Couldn't save") });
     router.refresh();
   }
 
   return (
-    <section className="space-y-2 rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
-      <h2 className="text-base font-semibold text-zinc-900">Daily limit</h2>
-      <p className="text-sm text-zinc-600">How many times one person can ask the AI to write something per day. It keeps costs predictable. It starts counting once AI writing is switched on in campaigns.</p>
-      <div className="flex items-center gap-2">
-        <input type="number" min={1} max={1000} value={value} onChange={(e) => setValue(e.target.value)} className={`${input} w-24`} />
-        <span className="text-sm text-zinc-500">per person per day</span>
-        <button onClick={save} disabled={busy || value === String(dailyLimit)} className={primary}>
+    <section className="space-y-3 rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
+      <h2 className="text-base font-semibold text-zinc-900">Writing settings</h2>
+      <div className="grid gap-4 sm:grid-cols-3">
+        <label className="space-y-1">
+          <span className="text-sm font-medium text-zinc-700">Versions per click</span>
+          <select value={variants} onChange={(e) => setVariants(e.target.value)} className={input}>
+            <option value="1">1</option>
+            <option value="2">2</option>
+            <option value="3">3</option>
+          </select>
+          <span className="block text-xs text-zinc-500">How many different emails to write each time.</span>
+        </label>
+        <label className="space-y-1">
+          <span className="text-sm font-medium text-zinc-700">Creativity</span>
+          <select value={creativity} onChange={(e) => setCreativity(e.target.value)} className={input}>
+            <option value="low">Low (safe, consistent)</option>
+            <option value="medium">Medium</option>
+            <option value="high">High (more varied)</option>
+          </select>
+          <span className="block text-xs text-zinc-500">How adventurous the wording is.</span>
+        </label>
+        <label className="space-y-1">
+          <span className="text-sm font-medium text-zinc-700">Daily limit</span>
+          <div className="flex items-center gap-2">
+            <input type="number" min={1} max={1000} value={limit} onChange={(e) => setLimit(e.target.value)} className={`${input} w-24`} />
+            <span className="text-sm text-zinc-500">per person</span>
+          </div>
+          <span className="block text-xs text-zinc-500">AI writes each person can ask for per day. It keeps costs predictable.</span>
+        </label>
+      </div>
+      <div className="flex items-center gap-3">
+        <button onClick={save} disabled={busy || !changed} className={primary}>
           {busy ? "Saving…" : "Save"}
         </button>
+        {note && <span className={`text-sm ${note.kind === "ok" ? "text-emerald-700" : "text-red-600"}`}>{note.text}</span>}
       </div>
-      {note && <p className={`text-sm ${note.kind === "ok" ? "text-emerald-700" : "text-red-600"}`}>{note.text}</p>}
     </section>
   );
 }
@@ -218,7 +246,7 @@ export function ProvidersPanel({ settings, secretReady }: { settings: AiSettings
       {settings.providers.map((p) => (
         <ProviderCard key={p.provider} p={p} active={settings.activeProvider === p.provider} secretReady={secretReady} />
       ))}
-      <Limit dailyLimit={settings.dailyLimit} />
+      <Writing settings={settings} />
     </div>
   );
 }

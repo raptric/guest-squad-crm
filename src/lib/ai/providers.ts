@@ -13,7 +13,13 @@ export class AiError extends Error {
 
 export type AiResult = { text: string; inputTokens: number | null; outputTokens: number | null; ms: number };
 
-const TIMEOUT_MS = 30_000;
+const TIMEOUT_MS = 60_000;
+
+// The services' own addresses. AI_ANTHROPIC_URL / AI_OPENAI_URL can point them at a proxy or gateway instead.
+const BASE = {
+  anthropic: (process.env.AI_ANTHROPIC_URL || "https://api.anthropic.com").replace(/\/$/, ""),
+  openai: (process.env.AI_OPENAI_URL || "https://api.openai.com").replace(/\/$/, ""),
+};
 
 // A friendly sentence for the failures people actually hit, without echoing anything the provider sent back.
 function explain(provider: ProviderId, status: number): string {
@@ -57,7 +63,7 @@ export async function generate(provider: ProviderId, apiKey: string, model: stri
     const body: Record<string, unknown> = { model, max_tokens: m.maxTokens, messages: [{ role: "user", content: m.prompt }] };
     if (m.system) body.system = m.system;
     if (m.temperature !== undefined) body.temperature = m.temperature;
-    const json = (await call(provider, "https://api.anthropic.com/v1/messages", { method: "POST", headers: authHeaders(provider, apiKey), body: JSON.stringify(body) })) as {
+    const json = (await call(provider, `${BASE.anthropic}/v1/messages`, { method: "POST", headers: authHeaders(provider, apiKey), body: JSON.stringify(body) })) as {
       content?: { type: string; text?: string }[];
       usage?: { input_tokens?: number; output_tokens?: number };
     };
@@ -68,7 +74,7 @@ export async function generate(provider: ProviderId, apiKey: string, model: stri
   const messages = [...(m.system ? [{ role: "system", content: m.system }] : []), { role: "user", content: m.prompt }];
   const body: Record<string, unknown> = { model, messages, max_completion_tokens: m.maxTokens };
   if (m.temperature !== undefined) body.temperature = m.temperature;
-  const json = (await call(provider, "https://api.openai.com/v1/chat/completions", { method: "POST", headers: authHeaders(provider, apiKey), body: JSON.stringify(body) })) as {
+  const json = (await call(provider, `${BASE.openai}/v1/chat/completions`, { method: "POST", headers: authHeaders(provider, apiKey), body: JSON.stringify(body) })) as {
     choices?: { message?: { content?: string | null } }[];
     usage?: { prompt_tokens?: number; completion_tokens?: number };
   };
@@ -83,10 +89,10 @@ export async function generate(provider: ProviderId, apiKey: string, model: stri
 // The model names this account can use, so nobody has to guess a spelling.
 export async function listModels(provider: ProviderId, apiKey: string): Promise<string[]> {
   if (provider === "anthropic") {
-    const json = (await call(provider, "https://api.anthropic.com/v1/models?limit=100", { headers: authHeaders(provider, apiKey) })) as { data?: { id: string }[] };
+    const json = (await call(provider, `${BASE.anthropic}/v1/models?limit=100`, { headers: authHeaders(provider, apiKey) })) as { data?: { id: string }[] };
     return (json.data ?? []).map((m) => m.id);
   }
-  const json = (await call(provider, "https://api.openai.com/v1/models", { headers: authHeaders(provider, apiKey) })) as { data?: { id: string }[] };
+  const json = (await call(provider, `${BASE.openai}/v1/models`, { headers: authHeaders(provider, apiKey) })) as { data?: { id: string }[] };
   return (json.data ?? [])
     .map((m) => m.id)
     .filter((id) => /^(gpt|o\d|chatgpt)/.test(id) && !/(audio|realtime|transcribe|tts|image|embedding|moderation|search|instruct|codex)/.test(id))

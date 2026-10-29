@@ -1,7 +1,7 @@
 import { query, withTransaction } from "@/lib/db";
-import { fetchCampaign, type CampaignWithSteps } from "@/lib/campaigns";
+import { fetchCampaign, type CampaignStep, type Playbook } from "@/lib/campaigns";
 import { fetchFitForCompany } from "@/lib/campaign-fit";
-import { audienceSummary } from "@/lib/campaign-fit-format";
+import { audienceSummary, type Criteria } from "@/lib/campaign-fit-format";
 import type { Actor } from "@/lib/assignment";
 import { fetchKnowledge, fetchRules } from "./content";
 
@@ -62,7 +62,10 @@ async function knowledgeValues(): Promise<Record<string, string>> {
 
 // ---- campaign and step ----
 
-function campaignValues(k: CampaignWithSteps, stepNumber: number): Record<string, string> {
+// A campaign as the prompts see it. A saved campaign fits this, and so does the form's current content before it is saved.
+export type DraftCampaign = { code: string; name: string; playbook: Playbook; criteria: Criteria; steps: CampaignStep[] };
+
+function campaignValues(k: DraftCampaign, stepNumber: number): Record<string, string> {
   const p = k.playbook;
   const others = join([...p.secondary_pains, p.secondary_other], "; ");
   const diffs = join([...p.differentiators, p.differentiators_other], "; ");
@@ -79,7 +82,10 @@ function campaignValues(k: CampaignWithSteps, stepNumber: number): Record<string
   const outline = k.steps.map((x, i) => `${i + 1}. Day ${x.day_number} · ${x.channel} — ${x.title}${i + 1 === stepNumber ? "   <- this step" : ""}`).join("\n");
   const previous = k.steps
     .slice(0, stepNumber - 1)
-    .map((x, i) => `Step ${i + 1} · ${x.channel} · day ${x.day_number} — ${x.title}${x.instructions.trim() ? `\n${x.instructions.trim()}` : ""}`)
+    .map((x, i) => {
+      const saved = x.body?.trim() ? `\nSaved baseline email:\n${x.subject?.trim() ? `Subject: ${x.subject.trim()}\n` : ""}${x.body.trim()}` : "";
+      return `Step ${i + 1} · ${x.channel} · day ${x.day_number} — ${x.title}${x.instructions.trim() ? `\n${x.instructions.trim()}` : ""}${saved}`;
+    })
     .join("\n\n");
 
   const audience = audienceSummary(k.criteria);
@@ -321,6 +327,18 @@ function senderValues(a: ContextInput["actor"]): Record<string, string> {
 }
 
 // ---- everything ----
+
+// For a campaign that is still being edited: the form's current content stands in for the saved campaign.
+export async function buildValuesForDraft(input: { actor: ContextInput["actor"]; campaign: DraftCampaign; stepNumber: number; variants: number }): Promise<Record<string, string>> {
+  const [knowledge, rules] = await Promise.all([knowledgeValues(), fetchRules()]);
+  return {
+    ...knowledge,
+    rules: rules.text,
+    "generation.versions": String(input.variants),
+    ...campaignValues(input.campaign, input.stepNumber),
+    ...senderValues(input.actor),
+  };
+}
 
 export async function buildValues(input: ContextInput): Promise<ContextResult> {
   const notes: string[] = [];

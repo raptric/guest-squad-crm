@@ -5,8 +5,10 @@ import { useRouter } from "next/navigation";
 import { ArrowDownIcon, ArrowUpIcon, PlusIcon, TrashIcon } from "../icons";
 import { CHANNELS, VISIBILITY_LABEL, type Visibility } from "@/lib/campaigns-format";
 import type { Criteria } from "@/lib/campaign-fit-format";
+import { StepCopy, type CopySource, type StepCopyValue } from "./step-copy";
 
-type Step = { key: number; day_number: string; channel: string; title: string; instructions: string };
+type Step = { key: number; day_number: string; channel: string; title: string; instructions: string } & StepCopyValue;
+const isEmailChannel = (c: string) => c === "Initial Email" || c === "Follow-up Email";
 
 export type CampaignFormInitial = {
   id: string;
@@ -17,7 +19,7 @@ export type CampaignFormInitial = {
   visibility: Visibility;
   team_id: string | null;
   owner_id: string | null;
-  steps: { day_number: number; channel: string; title: string; instructions: string }[];
+  steps: { day_number: number; channel: string; title: string; instructions: string; subject?: string; body?: string; copy_source?: string | null; copy_by_name?: string | null; copy_at?: string | null }[];
   outreach_angle: string | null;
   pain_point: string;
   secondary_pains: string[];
@@ -36,7 +38,7 @@ type Viewer = { role: string; teamId: string | null; teamName: string | null; id
 const field = "w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-100";
 
 let keySeed = 0;
-const newStep = (day = 1): Step => ({ key: ++keySeed, day_number: String(day), channel: "Initial Email", title: "", instructions: "" });
+const newStep = (day = 1): Step => ({ key: ++keySeed, day_number: String(day), channel: "Initial Email", title: "", instructions: "", subject: "", body: "", copy_source: "" });
 
 // Create / edit a campaign: identity, messaging (the playbook) and the ordered steps.
 export function CampaignForm({
@@ -108,11 +110,47 @@ export function CampaignForm({
   const [cta, setCta] = useState(initial?.call_to_action ?? "");
   const [steps, setSteps] = useState<Step[]>(
     initial?.steps.length
-      ? initial.steps.map((s) => ({ key: ++keySeed, day_number: String(s.day_number), channel: s.channel, title: s.title, instructions: s.instructions }))
+      ? initial.steps.map((s) => ({
+          key: ++keySeed,
+          day_number: String(s.day_number),
+          channel: s.channel,
+          title: s.title,
+          instructions: s.instructions,
+          subject: s.subject ?? "",
+          body: s.body ?? "",
+          copy_source: (s.copy_source ?? "") as CopySource,
+          saved: s.body ? { subject: s.subject ?? "", body: s.body, by: s.copy_by_name ?? null, at: s.copy_at ?? null } : undefined,
+        }))
       : [newStep(1)]
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const stepsPayload = () =>
+    steps.map((s) => ({
+      day_number: Number(s.day_number),
+      channel: s.channel,
+      title: s.title,
+      instructions: s.instructions,
+      subject: isEmailChannel(s.channel) ? s.subject : "",
+      body: isEmailChannel(s.channel) ? s.body : "",
+      copy_source: s.copy_source,
+    }));
+  // What the AI is shown: the form as it stands now, saved or not.
+  const getDraft = () => ({
+    code: initial?.code ?? "",
+    name,
+    outreach_angle: angle || null,
+    pain_point: pain,
+    secondary_pains: secondary.filter((p) => p !== angle),
+    secondary_other: secondaryOther,
+    positioning,
+    differentiators: diffs,
+    differentiators_other: diffsOther,
+    call_to_action: cta,
+    criteria,
+    steps: stepsPayload(),
+  });
 
   const update = (key: number, patch: Partial<Step>) => setSteps((all) => all.map((s) => (s.key === key ? { ...s, ...patch } : s)));
   const move = (index: number, dir: -1 | 1) =>
@@ -158,7 +196,7 @@ export function CampaignForm({
         secondary_other: secondary.includes("Other") ? secondaryOther : "",
         differentiators_other: diffs.includes("Other") ? diffsOther : "",
         call_to_action: cta,
-        steps: steps.map((s) => ({ day_number: Number(s.day_number), channel: s.channel, title: s.title, instructions: s.instructions })),
+        steps: stepsPayload(),
       }),
     });
     setSaving(false);
@@ -434,6 +472,16 @@ export function CampaignForm({
                   className={field}
                 />
               </label>
+              {isEmailChannel(s.channel) && (
+                <StepCopy
+                  value={s}
+                  onChange={(next) => update(s.key, next)}
+                  getDraft={getDraft}
+                  stepIndex={i}
+                  senderName={viewer.name}
+                  hasPlaybook={Boolean(angle || pain.trim())}
+                />
+              )}
             </li>
           ))}
         </ol>

@@ -8,12 +8,23 @@ const fail = (error: string, status = 400) => NextResponse.json({ error }, { sta
 // Choose the provider the CRM uses and the per-person daily limit. Admin only.
 //   { active_provider?: "anthropic" | "openai" | null }
 //   { daily_limit?: number }
+//   { variants?: 1 | 2 | 3, creativity?: "low" | "medium" | "high" }   how many versions to write, and how varied
 export async function PATCH(request: Request) {
   const actor = await getCurrentUser();
   if (!actor || actor.role !== "super_admin") return fail("Only admins can change AI settings.", 403);
 
-  const body = (await request.json().catch(() => ({}))) as { active_provider?: unknown; daily_limit?: unknown };
-  if (body.active_provider === undefined && body.daily_limit === undefined) return fail("Nothing to change.");
+  const body = (await request.json().catch(() => ({}))) as { active_provider?: unknown; daily_limit?: unknown; variants?: unknown; creativity?: unknown };
+  if (body.active_provider === undefined && body.daily_limit === undefined && body.variants === undefined && body.creativity === undefined) return fail("Nothing to change.");
+
+  if (body.variants !== undefined) {
+    const n = Number(body.variants);
+    if (!Number.isInteger(n) || n < 1 || n > 3) return fail("Versions per click must be 1, 2 or 3.");
+    await query("UPDATE ai_settings SET variants = $1, updated_at = now() WHERE id = 1", [n]);
+  }
+  if (body.creativity !== undefined) {
+    if (body.creativity !== "low" && body.creativity !== "medium" && body.creativity !== "high") return fail("Creativity must be low, medium or high.");
+    await query("UPDATE ai_settings SET creativity = $1, updated_at = now() WHERE id = 1", [body.creativity]);
+  }
 
   if (body.active_provider !== undefined) {
     if (body.active_provider !== null && !isProviderId(body.active_provider)) return fail("Unknown provider.");
