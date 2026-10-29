@@ -11,7 +11,7 @@ export async function POST(request: Request) {
 
   const body = (await request.json()) as { criteria?: unknown };
   // Reuse the campaign parser so the criteria are validated exactly as when saving.
-  const parsed = parseCampaignInput({ name: "preview", steps: [{ day_number: 1, channel: "Email", title: "preview" }], criteria: body.criteria });
+  const parsed = parseCampaignInput({ name: "preview", steps: [{ day_number: 1, channel: "Initial Email", title: "preview" }], criteria: body.criteria });
   if ("error" in parsed) return NextResponse.json({ error: parsed.error }, { status: 400 });
 
   return NextResponse.json(await fetchFitCounts(actor, parsed.value.criteria));

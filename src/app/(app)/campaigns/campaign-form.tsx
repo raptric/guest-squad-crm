@@ -36,7 +36,7 @@ type Viewer = { role: string; teamId: string | null; teamName: string | null; id
 const field = "w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-100";
 
 let keySeed = 0;
-const newStep = (day = 1): Step => ({ key: ++keySeed, day_number: String(day), channel: "Email", title: "", instructions: "" });
+const newStep = (day = 1): Step => ({ key: ++keySeed, day_number: String(day), channel: "Initial Email", title: "", instructions: "" });
 
 // Create / edit a campaign: identity, messaging (the playbook) and the ordered steps.
 export function CampaignForm({

@@ -1,6 +1,6 @@
 // Display helpers for campaign tasks (safe for server and client code).
 // What a step is about. Only a label: nothing is sent or integrated, the person does the step themselves.
-export const CHANNELS = ["Email", "Call", "LinkedIn connection", "LinkedIn message", "WhatsApp / SMS", "Other"] as const;
+export const CHANNELS = ["Initial Email", "Follow-up Email", "Call", "LinkedIn connection", "LinkedIn message", "WhatsApp / SMS", "Other"] as const;
 
 const DAY_MS = 86_400_000;
 const parse = (d: string) => Date.parse(`${d}T00:00:00Z`);
@@ -27,7 +27,8 @@ export const DUE_TONE: Record<string, string> = {
 };
 
 export const CHANNEL_CHIP: Record<string, string> = {
-  Email: "bg-sky-50 text-sky-700",
+  "Initial Email": "bg-sky-50 text-sky-700",
+  "Follow-up Email": "bg-cyan-50 text-cyan-700",
   Call: "bg-emerald-50 text-emerald-700",
   "LinkedIn connection": "bg-indigo-50 text-indigo-700",
   "LinkedIn message": "bg-indigo-50 text-indigo-700",

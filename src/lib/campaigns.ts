@@ -618,4 +618,4 @@ export async function getEnrollmentForAction(actor: Actor, enrollmentId: number)
 }
 
 // Maps a step's channel to the company activity type shown on the timeline.
-export const activityTypeFor = (channel: string) => (channel === "Email" ? "email" : channel === "Call" ? "call" : "outreach_sent");
+export const activityTypeFor = (channel: string) => (channel === "Initial Email" || channel === "Follow-up Email" ? "email" : channel === "Call" ? "call" : "outreach_sent");
