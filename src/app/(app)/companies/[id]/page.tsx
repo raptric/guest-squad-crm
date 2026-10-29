@@ -407,7 +407,7 @@ export default async function CompanyDetailPage({
         </Card>
       </div>
 
-        {/* Main: contacts | signals, then qualification */}
+        {/* Main: contacts | signals, then the campaign (full width) */}
         <div className="order-2 min-w-0 space-y-5 min-[1400px]:order-none min-[1400px]:col-start-1 min-[1400px]:row-start-3 2xl:col-span-2">
           {!isProperty && (
             <Card icon={<BuildingIcon className="h-5 w-5" />} title={`Portfolio (${children?.length ?? 0} listed${company.portfolio_size ? ` of ${company.portfolio_size} known` : ""})`}>
@@ -531,7 +531,38 @@ export default async function CompanyDetailPage({
             </Card>
           </div>
 
-          <div className="grid gap-5 lg:grid-cols-2">
+          {/* The campaign gets the full width of the main column: it is where the emails are written and sent. */}
+          {showCampaign && (
+            <CampaignCard
+              companyId={companyId}
+              today={todayUtc()}
+              mayEnroll={mayEnroll}
+              enrollNote={enrollNote}
+              canAct={canActOnTasks}
+              senderName={actor?.name ?? ""}
+              senderEmail={senderEmail}
+              enrollments={enrollments}
+              playbooks={playbooks}
+              campaigns={campaigns.map((c) => ({ ...c, fit: fits[c.id] ?? null }))}
+              recipients={contacts.map((c) => {
+                const email = forThisCompany(c.contact_emails)[0]?.email;
+                const name = `${c.first_name} ${c.last_name ?? ""}`.trim();
+                return { id: Number(c.id), label: email ? `${name} (${email})` : name };
+              })}
+              lockedCampaignId={lockedCampaignId}
+              takenRecipients={takenRecipients}
+            />
+          )}
+        </div>
+
+        {/* Side: verify, qualification, offers, activity -- sticky on wide screens, stacked after the main block on small ones */}
+        <aside className="contents min-[1400px]:sticky min-[1400px]:top-4 min-[1400px]:col-start-2 min-[1400px]:row-span-3 min-[1400px]:row-start-1 min-[1400px]:-mx-1 min-[1400px]:block min-[1400px]:max-h-[calc(100vh-2rem)] min-[1400px]:space-y-5 min-[1400px]:overflow-y-auto min-[1400px]:px-1 min-[1400px]:pb-2 2xl:col-start-3 2xl:row-span-1 2xl:row-start-3">
+          {showVerify && (
+            <div className="order-1 min-[1400px]:order-none">
+              <VerifyBox companyId={companyId} status={company.verification_status} last={lastReview} />
+            </div>
+          )}
+          <div className="order-3 min-[1400px]:order-none">
             <Card icon={<ClipboardCheckIcon className="h-5 w-5" />} tone="violet" title="Qualification">
               <dl className="space-y-5 text-sm">
                 <div>
@@ -544,7 +575,8 @@ export default async function CompanyDetailPage({
                 </div>
               </dl>
             </Card>
-
+          </div>
+          <div className="order-3 min-[1400px]:order-none">
             <Card icon={<BulbIcon className="h-5 w-5" />} tone="amber" title="Offers" action={<AddOfferForm companyId={companyId} />}>
               {!offers?.length ? (
                 <EmptyState icon={<BulbIcon className="h-7 w-7" />} text="No offer recommendations yet." />
@@ -553,38 +585,6 @@ export default async function CompanyDetailPage({
               )}
             </Card>
           </div>
-        </div>
-
-        {/* Side: verify, offers, activity -- sticky on wide screens, stacked around the main block on small ones */}
-        <aside className="contents min-[1400px]:sticky min-[1400px]:top-4 min-[1400px]:col-start-2 min-[1400px]:row-span-3 min-[1400px]:row-start-1 min-[1400px]:-mx-1 min-[1400px]:block min-[1400px]:max-h-[calc(100vh-2rem)] min-[1400px]:space-y-5 min-[1400px]:overflow-y-auto min-[1400px]:px-1 min-[1400px]:pb-2 2xl:col-start-3 2xl:row-span-1 2xl:row-start-3">
-          {showVerify && (
-            <div className="order-1 min-[1400px]:order-none">
-              <VerifyBox companyId={companyId} status={company.verification_status} last={lastReview} />
-            </div>
-          )}
-          {showCampaign && (
-            <div className="order-3 min-[1400px]:order-none">
-              <CampaignCard
-                companyId={companyId}
-                today={todayUtc()}
-                mayEnroll={mayEnroll}
-                enrollNote={enrollNote}
-                canAct={canActOnTasks}
-                senderName={actor?.name ?? ""}
-                senderEmail={senderEmail}
-                enrollments={enrollments}
-                playbooks={playbooks}
-                campaigns={campaigns.map((c) => ({ ...c, fit: fits[c.id] ?? null }))}
-                recipients={contacts.map((c) => {
-                  const email = forThisCompany(c.contact_emails)[0]?.email;
-                  const name = `${c.first_name} ${c.last_name ?? ""}`.trim();
-                  return { id: Number(c.id), label: email ? `${name} (${email})` : name };
-                })}
-                lockedCampaignId={lockedCampaignId}
-                takenRecipients={takenRecipients}
-              />
-            </div>
-          )}
           <div className="order-4 min-[1400px]:order-none">
             <Card icon={<ClockIcon className="h-5 w-5" />} tone="zinc" title="Activity">
               <div className="space-y-3">
