@@ -1,9 +1,9 @@
-// One-off seed for Settings -> AI: the starting writing rules, a starter "never claim" list and a few illustrative
+// One-off seed for Settings -> AI: the starting writing rules text, a starter "never claim" list and a few illustrative
 // examples (see docs/ai-copy-rules-draft.md). Safe to run again: it only fills what is still empty.
 // Usage: node scripts/seed-ai-content.mjs
 import { Client } from "pg";
 import { config } from "dotenv";
-import { DEFAULT_RULES } from "../src/lib/ai/rules-format.ts";
+import { DEFAULT_RULES_TEXT } from "../src/lib/ai/rules-format.ts";
 
 config({ path: ".env.local" });
 
@@ -18,23 +18,23 @@ const NEVER_CLAIM = [
 const NOTE = "Illustrative sample from the first draft. Replace it with one of your real best messages.";
 const EXAMPLES = [
   {
-    role: "opener",
+    role: "initial_email",
     subject: "after-hours messages",
     body: "Hi {first_name},\n\nGuests at {property_name} who write after midnight probably wait until morning for a reply. That is when a lot of arrival questions and last-minute bookings come in.\n\nWe cover guest messages and calls for hotels overnight, so nothing sits unanswered.\n\nWorth a quick chat?",
   },
   {
-    role: "followup",
+    role: "followup_email",
     subject: "late arrivals",
     body: "{first_name}, one more thought. Late check-ins are where small delays turn into bad reviews. A reply within minutes at 1 a.m. changes how the stay starts.\n\nWould it help to see how other hotels handle it?",
   },
   {
-    role: "breakup",
+    role: "followup_email",
     subject: "closing the loop",
     body: "{first_name}, I'll stop here so I don't clutter your inbox. If overnight guest coverage ever becomes a priority at {property_name}, I'm happy to help.",
   },
   { role: "linkedin_connect", subject: "", body: "Hi {first_name}, I work with hotels on guest communication and your property in {city} caught my eye. Glad to connect." },
   {
-    role: "call_script",
+    role: "call",
     subject: "",
     body: "Hi {first_name}, it's {sender_name} from GuestSquad. I'll be brief: we help hotels answer guest calls and messages after hours. Is that something {property_name} handles in-house today?",
   },
@@ -47,8 +47,8 @@ try {
   const version = (kind, ref, snapshot) => pg.query("INSERT INTO ai_versions (kind, ref, snapshot, changed_by) VALUES ($1,$2,$3,NULL)", [kind, ref, JSON.stringify(snapshot)]);
 
   if (!(await pg.query("SELECT 1 FROM ai_rules WHERE id = 1")).rowCount) {
-    await pg.query("INSERT INTO ai_rules (id, data) VALUES (1, $1)", [JSON.stringify(DEFAULT_RULES)]);
-    await version("rules", "rules", { data: DEFAULT_RULES });
+    await pg.query("INSERT INTO ai_rules (id, data) VALUES (1, $1)", [JSON.stringify({ text: DEFAULT_RULES_TEXT })]);
+    await version("rules", "rules", { data: { text: DEFAULT_RULES_TEXT } });
     console.log("rules seeded");
   }
   if (!(await pg.query("SELECT 1 FROM ai_knowledge WHERE key = 'never_claim'")).rowCount) {

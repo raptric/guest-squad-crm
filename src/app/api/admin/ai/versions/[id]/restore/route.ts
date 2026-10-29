@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { withTransaction } from "@/lib/db";
-import { checkExample, checkKnowledgeBody, checkRules, isKnowledgeKey, requireAdmin, saveKnowledge, saveRules, updateExample } from "@/lib/ai/content";
+import { checkExample, checkKnowledgeBody, checkRulesText, isKnowledgeKey, requireAdmin, saveKnowledge, saveRules, updateExample } from "@/lib/ai/content";
+import { rulesText } from "@/lib/ai/rules-format";
 
 const fail = (error: string, status = 400) => NextResponse.json({ error }, { status });
 
@@ -22,7 +23,7 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
       if ("error" in body) return body;
       await saveKnowledge(client, v.ref, body.value, actor.id);
     } else if (v.kind === "rules") {
-      const rules = checkRules(v.snapshot.data);
+      const rules = checkRulesText(rulesText(v.snapshot.data));
       if ("error" in rules) return { error: `This old version can't be restored: ${rules.error}` };
       await saveRules(client, rules.value, actor.id);
     } else {

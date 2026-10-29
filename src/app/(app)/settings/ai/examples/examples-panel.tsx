@@ -10,7 +10,7 @@ const primary = "rounded-md bg-zinc-900 px-3 py-1.5 text-sm font-medium text-whi
 const secondary = "rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50";
 
 type Draft = { role: RoleKey; audience: string; subject: string; body: string; kind: "good" | "bad"; note: string };
-const EMPTY: Draft = { role: "opener", audience: "any", subject: "", body: "", kind: "good", note: "" };
+const EMPTY: Draft = { role: "initial_email", audience: "any", subject: "", body: "", kind: "good", note: "" };
 
 function ExampleForm({ initial, audiences, id, onDone }: { initial: Draft; audiences: string[]; id?: string; onDone: () => void }) {
   const router = useRouter();

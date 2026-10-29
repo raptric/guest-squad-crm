@@ -1,9 +1,8 @@
 import type { Client } from "pg";
-import { z } from "zod";
 import { query } from "@/lib/db";
 import { getCurrentUser } from "@/lib/current-user";
 import { KNOWLEDGE_BODY_MAX, KNOWLEDGE_TOPICS, serviceKey } from "./knowledge-format";
-import { PAIN_TYPES, ROLE_KEYS, withDefaults, type Rules, type RoleKey } from "./rules-format";
+import { DEFAULT_RULES_TEXT, RULES_TEXT_MAX, normalizeRole, rulesText, type RoleKey } from "./rules-format";
 
 export type Kind = "knowledge" | "rules" | "example";
 
@@ -68,57 +67,28 @@ export async function saveKnowledge(client: Client, key: string, body: string, u
 
 // ---- Rules ----
 
-const words = z.number().int().min(0).max(2000);
-const list = z.array(z.string().trim().min(1).max(100)).max(100);
-const role = z.object({ min: words, max: words, notes: z.string().max(600) }).refine((r) => r.min <= r.max, { message: "The minimum is higher than the maximum." });
-
-const rulesSchema = z.object({
-  roles: z.object(Object.fromEntries(ROLE_KEYS.map((k) => [k, role])) as Record<RoleKey, typeof role>),
-  email: z
-    .object({
-      subjectMinWords: z.number().int().min(1).max(20),
-      subjectMaxWords: z.number().int().min(1).max(20),
-      lowercaseSubject: z.boolean(),
-      noLinksInFirst: z.boolean(),
-      plainTextOnly: z.boolean(),
-      oneAsk: z.boolean(),
-      personalHook: z.boolean(),
-    })
-    .refine((e) => e.subjectMinWords <= e.subjectMaxWords, { message: "The subject minimum is higher than its maximum." }),
-  voice: z.string().max(2000),
-  bannedPhrases: list,
-  spamWords: list,
-  painAngles: z.object(Object.fromEntries(PAIN_TYPES.map((p) => [p, z.string().max(300)]))),
-  extra: z.string().max(3000),
-  defaults: z.object({ variants: z.union([z.literal(1), z.literal(2), z.literal(3)]), creativity: z.enum(["low", "medium", "high"]) }),
-});
-
-export function checkRules(v: unknown): { error: string } | { value: Rules } {
-  const r = rulesSchema.safeParse(v);
-  if (!r.success) {
-    const i = r.error.issues[0];
-    return { error: `${i.path.join(" › ") || "Rules"}: ${i.message}` };
-  }
-  const d = r.data as Rules;
-  // tidy the word lists: no blanks or repeats (case-insensitive)
-  const tidy = (xs: string[]) => [...new Map(xs.map((x) => [x.toLowerCase(), x])).values()];
-  return { value: { ...d, bannedPhrases: tidy(d.bannedPhrases), spamWords: tidy(d.spamWords), voice: d.voice.trim(), extra: d.extra.trim() } };
+export function checkRulesText(v: unknown): { error: string } | { value: string } {
+  if (typeof v !== "string") return { error: "Write the rules." };
+  const text = v.replace(/\r\n/g, "\n").trim();
+  if (!text) return { error: "The rules can't be empty." };
+  if (text.length > RULES_TEXT_MAX) return { error: `That is ${text.length.toLocaleString()} characters. Keep it under ${RULES_TEXT_MAX.toLocaleString()}.` };
+  return { value: text };
 }
 
-export async function fetchRules(): Promise<{ rules: Rules; updated_at: string | null; updated_by: string | null }> {
-  const [row] = await query<{ data: Partial<Rules>; updated_at: string; updated_by: string | null }>(
+export async function fetchRules(): Promise<{ text: string; updated_at: string | null; updated_by: string | null }> {
+  const [row] = await query<{ data: unknown; updated_at: string; updated_by: string | null }>(
     "SELECT r.data, r.updated_at, u.name AS updated_by FROM ai_rules r LEFT JOIN users u ON u.id = r.updated_by WHERE r.id = 1",
   );
-  return { rules: withDefaults(row?.data), updated_at: row?.updated_at ?? null, updated_by: row?.updated_by ?? null };
+  return { text: row ? rulesText(row.data) : DEFAULT_RULES_TEXT, updated_at: row?.updated_at ?? null, updated_by: row?.updated_by ?? null };
 }
 
-export async function saveRules(client: Client, rules: Rules, userId: number | string) {
+export async function saveRules(client: Client, text: string, userId: number | string) {
   await client.query(
     `INSERT INTO ai_rules (id, data, updated_by) VALUES (1,$1,$2)
      ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data, updated_by = EXCLUDED.updated_by, updated_at = now()`,
-    [JSON.stringify(rules), userId],
+    [JSON.stringify({ text }), userId],
   );
-  await addVersion(client, "rules", "rules", { data: rules }, userId);
+  await addVersion(client, "rules", "rules", { data: { text } }, userId);
 }
 
 // ---- Examples ----
@@ -138,8 +108,8 @@ export async function fetchAudiences(): Promise<string[]> {
 export function checkExample(v: unknown): { error: string } | { value: ExampleInput } {
   const o = (v ?? {}) as Record<string, unknown>;
   const str = (x: unknown) => (typeof x === "string" ? x.replace(/\r\n/g, "\n").trim() : "");
-  const exRole = str(o.role) as RoleKey;
-  if (!ROLE_KEYS.includes(exRole)) return { error: "Choose what kind of step this is." };
+  const exRole = normalizeRole(str(o.role));
+  if (!exRole) return { error: "Choose what kind of step this is." };
   const kind = o.kind === "bad" ? "bad" : "good";
   const subject = str(o.subject);
   const body = str(o.body);

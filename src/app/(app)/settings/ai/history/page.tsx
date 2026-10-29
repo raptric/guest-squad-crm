@@ -28,9 +28,8 @@ function describe(v: VersionRow): { title: string; detail: string } {
     return { title, detail: clip(s.body, 160) || "(empty)" };
   }
   if (v.kind === "rules") {
-    const d = (s.data ?? {}) as { bannedPhrases?: string[]; spamWords?: string[]; roles?: { opener?: { min: number; max: number } } };
-    const o = d.roles?.opener;
-    return { title: "Writing rules", detail: `Opener ${o ? `${o.min}–${o.max} words` : "—"} · ${d.bannedPhrases?.length ?? 0} banned phrases · ${d.spamWords?.length ?? 0} spam words` };
+    const d = (s.data ?? {}) as { text?: unknown };
+    return typeof d.text === "string" ? { title: "Writing rules", detail: clip(d.text, 160) } : { title: "Writing rules (earlier format)", detail: "Saved as separate fields. Restoring it converts it to text." };
   }
   const removed = s.is_active === false;
   return { title: `${roleLabel(String(s.role))} · ${s.kind === "bad" ? "bad" : "good"} example${removed ? " (removed)" : ""}`, detail: clip(s.subject, 80) ? `${clip(s.subject, 80)} — ${clip(s.body, 100)}` : clip(s.body, 160) };

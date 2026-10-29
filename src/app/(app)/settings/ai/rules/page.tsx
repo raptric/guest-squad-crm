@@ -12,18 +12,18 @@ export default async function WritingRulesPage() {
   const user = await getCurrentUser();
   if (user?.role !== "super_admin") redirect("/");
 
-  const { rules, updated_at, updated_by } = await fetchRules();
+  const { text, updated_at, updated_by } = await fetchRules();
 
   return (
     <div className="mx-auto w-full max-w-3xl space-y-6 p-6 lg:p-8">
-      <AiHeader description="How the AI must write: length, structure, voice, and the words it must never use." />
+      <AiHeader description="How the AI must write: voice, structure, and the words it must never use." />
       <div className="flex items-center justify-between">
-        <p className="text-sm text-zinc-600">Change what you need and click Save at the bottom. Every save is kept in the history.</p>
+        <p className="text-sm text-zinc-600">One text box. Every save is kept in the history.</p>
         <Link href="/settings/ai/history?kind=rules" className="text-sm text-sky-700 hover:underline">
           History
         </Link>
       </div>
-      <RulesPanel initial={rules} updatedAt={updated_at} updatedBy={updated_by} />
+      <RulesPanel initial={text}updatedAt={updated_at} updatedBy={updated_by} />
     </div>
   );
 }

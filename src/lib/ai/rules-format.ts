@@ -1,104 +1,69 @@
-// The writing rules and what they contain. Safe to import from the browser; the server-side checks are in rules.ts.
+// The step types the AI writes for, and the writing rules text. Safe to import from the browser.
 
+// The step types match the Channel dropdown in a campaign step (Initial Email, Follow-up Email, Call, LinkedIn ...).
 export const ROLES = [
-  { key: "opener", label: "Opener (first email)", channel: "email", unit: "words" },
-  { key: "followup", label: "Follow-up email", channel: "email", unit: "words" },
-  { key: "value_add", label: "Value-add email", channel: "email", unit: "words" },
-  { key: "breakup", label: "Breakup email", channel: "email", unit: "words" },
-  { key: "linkedin_connect", label: "LinkedIn connection note", channel: "linkedin", unit: "characters" },
-  { key: "linkedin_message", label: "LinkedIn message", channel: "linkedin", unit: "characters" },
-  { key: "call_script", label: "Call script", channel: "call", unit: "words" },
+  { key: "initial_email", label: "Initial Email", channel: "email" },
+  { key: "followup_email", label: "Follow-up Email", channel: "email" },
+  { key: "call", label: "Call", channel: "call" },
+  { key: "linkedin_connect", label: "LinkedIn connection", channel: "linkedin" },
+  { key: "linkedin_message", label: "LinkedIn message", channel: "linkedin" },
 ] as const;
 
 export type RoleKey = (typeof ROLES)[number]["key"];
 export const ROLE_KEYS = ROLES.map((r) => r.key) as RoleKey[];
-export const roleLabel = (key: string) => ROLES.find((r) => r.key === key)?.label ?? key;
 
-// The pain types the CRM records on a property (Pain Signals), so each can carry an angle to write about.
-export const PAIN_TYPES = ["Calls", "Reservations", "After-hours", "Check-in / Access", "OTA Messaging", "WhatsApp", "Guest Requests", "Front Desk Staffing", "Reviews"] as const;
+// Earlier versions used other names; saved history and examples may still carry them.
+const LEGACY_ROLE: Record<string, RoleKey> = { opener: "initial_email", followup: "followup_email", value_add: "followup_email", breakup: "followup_email", call_script: "call" };
+export function normalizeRole(key: string): RoleKey | null {
+  if ((ROLE_KEYS as string[]).includes(key)) return key as RoleKey;
+  return LEGACY_ROLE[key] ?? null;
+}
+export const roleLabel = (key: string) => ROLES.find((r) => r.key === normalizeRole(key))?.label ?? key;
 
-export type RoleRule = { min: number; max: number; notes: string };
-export type Creativity = "low" | "medium" | "high";
+export const RULES_TEXT_MAX = 6000;
 
-export type Rules = {
-  roles: Record<RoleKey, RoleRule>;
-  email: {
-    subjectMinWords: number;
-    subjectMaxWords: number;
-    lowercaseSubject: boolean;
-    noLinksInFirst: boolean;
-    plainTextOnly: boolean;
-    oneAsk: boolean;
-    personalHook: boolean;
-  };
-  voice: string;
-  bannedPhrases: string[];
-  spamWords: string[];
-  painAngles: Record<string, string>;
-  extra: string;
-  defaults: { variants: 1 | 2 | 3; creativity: Creativity };
+export const DEFAULT_RULES_TEXT = `VOICE
+Direct, calm, practical, hospitality-aware. We sound like someone who has worked a front desk. Not salesy, pushy, corporate, hyped or flattering. Peer to peer. Short sentences, one idea each, plain words (grade 6 to 8). No exclamation marks.
+
+STRUCTURE
+- Open with something real about them or the campaign's pain. Never open with who we are. If there is nothing real, do not pretend to know them.
+- One pain and one idea per email. Use proof only if it is in the knowledge. Never invent numbers, names or reviews.
+- Exactly one ask, as a low-pressure question.
+- Plain text. No links or attachments in the first email.
+- Sign off with the sender's own name only.
+
+NEVER WRITE
+"I hope this finds you well", "touching base", "circling back", "just following up", "synergy", "game-changer", "revolutionary", "best-in-class", "cutting-edge", "leverage", "I wanted to reach out", "as per my last email".
+Avoid spam-trigger words: free, guarantee, act now, limited time, risk-free, 100%, winner, urgent, click here.`;
+
+type LegacyRules = {
+  roles?: Record<string, { min?: number; max?: number; notes?: string }>;
+  email?: Record<string, unknown>;
+  voice?: string;
+  bannedPhrases?: string[];
+  spamWords?: string[];
+  extra?: string;
 };
 
-export const DEFAULT_RULES: Rules = {
-  roles: {
-    opener: { min: 60, max: 110, notes: "Hook about them, one pain, one proof (only if approved), one ask. This is the only email that introduces GuestSquad." },
-    followup: { min: 40, max: 80, notes: "A new angle each time, shorter than the opener. Never says it is following up." },
-    value_add: { min: 40, max: 90, notes: "One useful insight or approved proof point, plus a soft ask." },
-    breakup: { min: 20, max: 50, notes: "Two or three lines. No pressure. Says this is the last note and leaves the door open." },
-    linkedin_connect: { min: 0, max: 300, notes: "No pitch. A reason to connect." },
-    linkedin_message: { min: 0, max: 400, notes: "One question." },
-    call_script: { min: 60, max: 220, notes: "Opener line, reason for the call, one question, a 20-second voicemail, and a gatekeeper line." },
-  },
-  email: { subjectMinWords: 2, subjectMaxWords: 5, lowercaseSubject: true, noLinksInFirst: true, plainTextOnly: true, oneAsk: true, personalHook: true },
-  voice:
-    "We are: direct, calm, practical, hospitality-aware. We sound like someone who has worked a front desk.\n" +
-    "We are not: salesy, pushy, corporate, hyped, or flattering.\n" +
-    "Peer to peer. Short sentences, one idea each, reading level around grade 6 to 8. No exclamation marks.",
-  bannedPhrases: [
-    "I hope this finds you well",
-    "touching base",
-    "circling back",
-    "just following up",
-    "synergy",
-    "game-changer",
-    "revolutionary",
-    "best-in-class",
-    "cutting-edge",
-    "leverage",
-    "I wanted to reach out",
-    "as per my last email",
-  ],
-  spamWords: ["free", "guarantee", "act now", "limited time", "risk-free", "no obligation", "100%", "winner", "urgent", "click here"],
-  painAngles: {
-    Calls: "Calls go unanswered when the desk is busy.",
-    Reservations: "Booking enquiries wait too long for a reply.",
-    "After-hours": "Nobody covers guest messages and calls overnight.",
-    "Check-in / Access": "Late arrivals can't get in or get help.",
-    "OTA Messaging": "Messages on Booking.com or Expedia sit unanswered.",
-    WhatsApp: "Guests message on WhatsApp and nobody watches it.",
-    "Guest Requests": "Requests slip through during busy periods.",
-    "Front Desk Staffing": "Front desk staff are hard to hire and keep.",
-    Reviews: "Reviews mention slow replies.",
-  },
-  extra:
-    "Use only facts that are given. Never invent numbers, reviews, names or events. If a fact is missing, leave it out.\n" +
-    "Use one real fact about the recipient or the property in the opening. If there is none, use the campaign hook and do not pretend to know them.\n" +
-    "Use the placeholders {first_name}, {property_name} and {city}. Do not guess a missing value.\n" +
-    "Sign off with the sender's own name only.",
-  defaults: { variants: 2, creativity: "medium" },
-};
+// The first version of the rules was a set of fields. Turn one into the plain text that replaced it.
+export function legacyRulesToText(d: LegacyRules): string {
+  const out: string[] = [];
+  if (d.voice?.trim()) out.push(`VOICE\n${d.voice.trim()}`);
+  const structure = [d.extra?.trim()].filter(Boolean) as string[];
+  const e = d.email ?? {};
+  if (e.noLinksInFirst) structure.push("No links in the first email.");
+  if (e.plainTextOnly) structure.push("Plain text only.");
+  if (e.oneAsk) structure.push("Exactly one ask.");
+  if (e.personalHook) structure.push("Open with something real about them.");
+  if (e.lowercaseSubject) structure.push("Subject line in lowercase.");
+  if (structure.length) out.push(`STRUCTURE\n${structure.join("\n")}`);
+  const never = [...(d.bannedPhrases ?? []), ...(d.spamWords ?? [])];
+  if (never.length) out.push(`NEVER WRITE\n${never.map((n) => `"${n}"`).join(", ")}`);
+  return out.join("\n\n") || DEFAULT_RULES_TEXT;
+}
 
-// Fill anything missing from older saved data with the starting values.
-export function withDefaults(saved: Partial<Rules> | null | undefined): Rules {
-  const s = saved ?? {};
-  return {
-    roles: Object.fromEntries(ROLE_KEYS.map((k) => [k, { ...DEFAULT_RULES.roles[k], ...(s.roles?.[k] ?? {}) }])) as Record<RoleKey, RoleRule>,
-    email: { ...DEFAULT_RULES.email, ...(s.email ?? {}) },
-    voice: s.voice ?? DEFAULT_RULES.voice,
-    bannedPhrases: s.bannedPhrases ?? DEFAULT_RULES.bannedPhrases,
-    spamWords: s.spamWords ?? DEFAULT_RULES.spamWords,
-    painAngles: { ...DEFAULT_RULES.painAngles, ...(s.painAngles ?? {}) },
-    extra: s.extra ?? DEFAULT_RULES.extra,
-    defaults: { ...DEFAULT_RULES.defaults, ...(s.defaults ?? {}) },
-  };
+// Saved rules are { text } now. Older saves hold the field version, which is converted when read.
+export function rulesText(data: unknown): string {
+  const d = (data ?? {}) as { text?: unknown } & LegacyRules;
+  return typeof d.text === "string" ? d.text : legacyRulesToText(d);
 }
