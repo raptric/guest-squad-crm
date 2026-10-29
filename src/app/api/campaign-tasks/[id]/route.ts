@@ -66,6 +66,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       );
       const { rows } = await client.query("SELECT count(*)::int AS n FROM campaign_tasks WHERE enrollment_id = $1 AND status = 'pending'", [task.enrollment_id]);
       if (rows[0].n === 0) await client.query("UPDATE campaign_enrollments SET status = 'completed', completed_at = now() WHERE id = $1", [task.enrollment_id]);
+      await client.query("UPDATE campaign_messages SET status = 'void' WHERE task_id = $1 AND status = 'draft'", [id]);
       if (message) {
         messageId = (
           await client.query(

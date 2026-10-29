@@ -5,7 +5,7 @@ export type EmailDraft = {
   body: string;
   // where it started: the campaign's baseline (filled in), or written from nothing. The text it started with is kept so the
   // CRM can tell later whether it was changed.
-  origin: "baseline" | "human";
+  origin: "baseline" | "ai" | "human";
   startedSubject: string;
   startedBody: string;
 };

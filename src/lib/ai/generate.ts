@@ -20,7 +20,7 @@ export class GenerateError extends Error {
 export const PLACEHOLDERS = ["first_name", "company_name", "city", "sender_name"];
 
 const PROMPT_FOR_CHANNEL: Record<string, string> = { "Initial Email": "campaign_initial_email", "Follow-up Email": "campaign_followup_email" };
-const TEMPERATURE = { low: 0.3, medium: 0.7, high: 1 } as const;
+export const TEMPERATURE = { low: 0.3, medium: 0.7, high: 1 } as const;
 
 export type Version = { subject: string; body: string; words: number; warnings: string[] };
 export type Generated = { versions: Version[]; remaining: number; tokens: number | null };
@@ -86,12 +86,16 @@ export function draftFromBody(raw: unknown): { campaign: DraftCampaign; stepNumb
 
 // ---- the reply ----
 
-const TAIL = (versions: number, extra: string) =>
+const answerFormat = (versions: number, shape: string) => [
+  "",
+  "HOW TO ANSWER",
+  `Reply with JSON only, no other text, in exactly this shape: ${shape}`,
+  `Write exactly ${versions} ${versions === 1 ? "version" : "versions"}.`,
+];
+
+export const TAIL = (versions: number, extra: string) =>
   [
-    "",
-    "HOW TO ANSWER",
-    'Reply with JSON only, no other text, in exactly this shape: {"versions":[{"subject":"...","body":"..."}]}',
-    `Write exactly ${versions} ${versions === 1 ? "version" : "versions"}.`,
+    ...answerFormat(versions, '{"versions":[{"subject":"...","body":"..."}]}'),
     "Rules that always apply:",
     "- Use only the facts given above. Never invent numbers, names, customers or results. If something is not given, leave it out.",
     `- The only placeholders you may write are ${PLACEHOLDERS.map((p) => `{${p}}`).join(", ")}.`,
@@ -99,7 +103,22 @@ const TAIL = (versions: number, extra: string) =>
     ...(extra ? [`- The person writing this campaign asked for: ${extra}`] : []),
   ].join("\n");
 
-function parseVersions(result: AiResult, max: number): { subject: string; body: string }[] {
+// For an email to one company: it must name the facts it used, and say so if the company gave it nothing to work with.
+export const COMPANY_TAIL = (versions: number, extra: string) =>
+  [
+    ...answerFormat(versions, '{"versions":[{"subject":"...","body":"...","facts_used":["..."],"notes":"..."}]}'),
+    '- "facts_used": the specific facts from the company and contact details above that you used, each in a few words (for example "Booking.com rating 7.9"). An empty list if you used none.',
+    '- "notes": one short sentence for the person if something needs their attention (for example that nothing relevant was found, so the baseline opening was kept). Otherwise an empty string.',
+    "Rules that always apply:",
+    "- Use only the facts given above. Never invent numbers, names, customers or results. If something is not given, leave it out.",
+    "- Write real names and values. Do not leave any curly-brace placeholders.",
+    '- "subject" is one line. "body" is plain text with line breaks, no markdown.',
+    ...(extra ? [`- The person sending this email asked for: ${extra}`] : []),
+  ].join("\n");
+
+export type Parsed = { subject: string; body: string; facts_used: string[]; notes: string };
+
+export function parseVersions(result: AiResult, max: number): Parsed[] {
   const t = result.text.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
   const peek = t.replace(/\s+/g, " ").slice(0, 160);
   if (!t) {
@@ -124,30 +143,47 @@ function parseVersions(result: AiResult, max: number): { subject: string; body: 
   }
   const arr = Array.isArray(data) ? data : (data as { versions?: unknown })?.versions;
   const out = (Array.isArray(arr) ? arr : [])
-    .map((v) => ({ subject: str((v as Record<string, unknown>)?.subject, 200).replace(/\s+/g, " "), body: str((v as Record<string, unknown>)?.body, 6000) }))
+    .map((v) => {
+      const o = (v ?? {}) as Record<string, unknown>;
+      return {
+        subject: str(o.subject, 200).replace(/\s+/g, " "),
+        body: str(o.body, 6000),
+        facts_used: Array.isArray(o.facts_used) ? o.facts_used.filter((x): x is string => typeof x === "string").map((x) => x.trim().slice(0, 160)).filter(Boolean).slice(0, 12) : [],
+        notes: str(o.notes, 300).replace(/\s+/g, " "),
+      };
+    })
     .filter((v) => v.body)
     .slice(0, max);
   if (!out.length) throw new GenerateError("The AI did not write anything usable. Try again.", 502);
   return out;
 }
 
-function check(v: { subject: string; body: string }, channel: string): Version {
+// What is wrong with a draft that the AI itself will not mention. allowed is the list of placeholders that may stay in it.
+export function check(v: { subject: string; body: string }, channel: string, allowed: string[] = PLACEHOLDERS): Version {
   const warnings: string[] = [];
   const used = new Set([...`${v.subject}\n${v.body}`.matchAll(/\{([A-Za-z_][A-Za-z0-9_]*)\}/g)].map((m) => m[1]));
-  for (const name of used) if (!PLACEHOLDERS.includes(name)) warnings.push(`Uses {${name}}, which will not be filled in.`);
+  for (const name of used) {
+    warnings.push(allowed.includes(name) ? "" : allowed.length ? `Uses {${name}}, which will not be filled in.` : `Still has {${name}} to fill in.`);
+  }
   if (channel === "Initial Email" && /https?:\/\/|www\./i.test(v.body)) warnings.push("Contains a link.");
   if (!v.subject) warnings.push("Has no subject line.");
-  return { ...v, words: v.body.split(/\s+/).filter(Boolean).length, warnings };
+  return { ...v, words: v.body.split(/\s+/).filter(Boolean).length, warnings: warnings.filter(Boolean) };
 }
 
-// ---- generate ----
+// ---- everything the AI needs before a call: the service in use, the person's limit, the prompt text ----
 
-export async function generateBaseline(input: { actor: Actor; campaign: DraftCampaign; stepNumber: number; instruction: string }): Promise<Generated> {
-  const { actor, campaign, stepNumber } = input;
-  const step = campaign.steps[stepNumber - 1];
-  const promptKey = step ? PROMPT_FOR_CHANNEL[step.channel] : undefined;
-  if (!step || !promptKey) throw new GenerateError("AI writing is for Initial Email and Follow-up Email steps.", 400);
+export type Runtime = {
+  provider: ProviderId;
+  apiKey: string;
+  model: string;
+  variants: number;
+  creativity: "low" | "medium" | "high";
+  dailyLimit: number;
+  used: number;
+  template: string;
+};
 
+export async function prepare(actor: Actor, promptKey: string): Promise<Runtime> {
   // The database is a network hop away, so everything that does not depend on anything else is fetched at once.
   const [[settings], [{ used }], prompts, creds] = await Promise.all([
     query<{ active_provider: string | null; daily_limit: number; variants: number; creativity: "low" | "medium" | "high" }>("SELECT active_provider, daily_limit, variants, creativity FROM ai_settings WHERE id = 1"),
@@ -172,22 +208,37 @@ export async function generateBaseline(input: { actor: Actor; campaign: DraftCam
   } catch {
     throw new GenerateError("The saved API key can't be read. An admin needs to enter it again in Settings → AI.", 500);
   }
-  const model = row.model;
+  return { provider, apiKey, model: row.model, variants: settings.variants, creativity: settings.creativity, dailyLimit: settings.daily_limit, used, template: prompts.find((p) => p.key === promptKey)!.body };
+}
 
-  const template = prompts.find((p) => p.key === promptKey)!.body;
-  const values = await buildValuesForDraft({ actor, campaign, stepNumber, variants: settings.variants });
-  const extra = input.instruction.replace(/\s+/g, " ").trim().slice(0, 300);
-  const prompt = `${renderTemplate(template, values).text}\n${TAIL(settings.variants, extra)}`;
-
+// One call to the AI service, logged whether it worked or not. what() turns the reply into the result.
+export async function runAi<T>(actor: Actor, rt: Runtime, purpose: string, prompt: string, what: (r: AiResult) => T): Promise<{ value: T; tokens: number | null }> {
   try {
-    const result = await generate(provider as ProviderId, apiKey, model, { prompt, maxTokens: 3000, temperature: TEMPERATURE[settings.creativity] ?? 0.7, json: true });
-    const versions = parseVersions(result, settings.variants).map((v) => check(v, step.channel));
-    await logAiUsage({ userId: actor.id, provider, model, purpose: "campaign_copy", inputTokens: result.inputTokens, outputTokens: result.outputTokens, ok: true });
-    return { versions, remaining: Math.max(0, settings.daily_limit - used - 1), tokens: result.inputTokens !== null && result.outputTokens !== null ? result.inputTokens + result.outputTokens : null };
+    const result = await generate(rt.provider, rt.apiKey, rt.model, { prompt, maxTokens: 3000, temperature: TEMPERATURE[rt.creativity] ?? 0.7, json: true });
+    const value = what(result);
+    await logAiUsage({ userId: actor.id, provider: rt.provider, model: rt.model, purpose, inputTokens: result.inputTokens, outputTokens: result.outputTokens, ok: true });
+    return { value, tokens: result.inputTokens !== null && result.outputTokens !== null ? result.inputTokens + result.outputTokens : null };
   } catch (e) {
     const message = e instanceof AiError || e instanceof GenerateError ? e.message : "The AI could not write this. Try again.";
-    await logAiUsage({ userId: actor.id, provider, model, purpose: "campaign_copy", ok: false, error: e instanceof GenerateError && e.detail ? e.detail : message });
+    await logAiUsage({ userId: actor.id, provider: rt.provider, model: rt.model, purpose, ok: false, error: e instanceof GenerateError && e.detail ? e.detail : message });
     if (e instanceof GenerateError) throw e;
     throw new GenerateError(message, 502);
   }
+}
+
+// ---- generate a baseline for a campaign step ----
+
+export async function generateBaseline(input: { actor: Actor; campaign: DraftCampaign; stepNumber: number; instruction: string }): Promise<Generated> {
+  const { actor, campaign, stepNumber } = input;
+  const step = campaign.steps[stepNumber - 1];
+  const promptKey = step ? PROMPT_FOR_CHANNEL[step.channel] : undefined;
+  if (!step || !promptKey) throw new GenerateError("AI writing is for Initial Email and Follow-up Email steps.", 400);
+
+  const rt = await prepare(actor, promptKey);
+  const values = await buildValuesForDraft({ actor, campaign, stepNumber, variants: rt.variants });
+  const extra = input.instruction.replace(/\s+/g, " ").trim().slice(0, 300);
+  const prompt = `${renderTemplate(rt.template, values).text}\n${TAIL(rt.variants, extra)}`;
+
+  const { value, tokens } = await runAi(actor, rt, "campaign_copy", prompt, (r) => parseVersions(r, rt.variants).map((v) => check(v, step.channel)));
+  return { versions: value, remaining: Math.max(0, rt.dailyLimit - rt.used - 1), tokens };
 }

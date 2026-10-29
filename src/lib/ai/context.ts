@@ -15,6 +15,10 @@ export type ContextInput = {
   stepNumber: number; // 1-based place in the campaign
   companyId?: number | null;
   contact?: ContactChoice;
+  // Reading the campaign for someone who is working one of its tasks but could not otherwise open it.
+  campaignActor?: Actor;
+  // The kind of step the task was made for. If the campaign's step at that place is a different kind now, its baseline is not used.
+  expectChannel?: string;
 };
 export type ContextResult = { values: Record<string, string>; notes: string[] };
 
@@ -358,7 +362,7 @@ export async function buildValuesForDraft(input: { actor: ContextInput["actor"];
 export async function buildValues(input: ContextInput): Promise<ContextResult> {
   const notes: string[] = [];
   const [campaign, knowledge, rules, settings] = await Promise.all([
-    fetchCampaign(input.campaignId, input.actor),
+    fetchCampaign(input.campaignId, input.campaignActor ?? input.actor),
     knowledgeValues(),
     fetchRules(),
     query<{ variants: number }>("SELECT variants FROM ai_settings WHERE id = 1"),
@@ -380,7 +384,7 @@ export async function buildValues(input: ContextInput): Promise<ContextResult> {
   }
   // The baseline written for this step, and what was already sent to this company in this campaign.
   const step = campaign.steps[input.stepNumber - 1];
-  if (step?.body?.trim()) {
+  if (step?.body?.trim() && (!input.expectChannel || step.channel === input.expectChannel)) {
     values["baseline.subject"] = s(step.subject);
     values["baseline.body"] = s(step.body);
     values.baseline = `${step.subject?.trim() ? `Subject: ${step.subject.trim()}\n\n` : ""}${step.body.trim()}`;

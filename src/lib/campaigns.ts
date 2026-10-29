@@ -428,7 +428,12 @@ export type EnrollmentRow = {
 export async function fetchTaskMail(tasks: { id: string; step_channel: string }[]): Promise<Record<string, TaskMail>> {
   const ids = tasks.filter((t) => isEmailChannel(t.step_channel)).map((t) => t.id);
   if (!ids.length) return {};
-  const rows = await query<Omit<TaskMail, "sent"> & { task_id: string; sent_subject: string | null; sent_body: string | null; sent_at: string | null; sent_by: string | null; sent_source: MessageSource | null }>(
+  const drafts = await query<{ task_id: string; id: string; subject: string; body: string; facts_used: string[] | null; notes: string; at: string }>(
+    `SELECT task_id::text, id::text, subject, body, facts_used, notes, created_at AS at FROM campaign_messages
+      WHERE task_id = ANY($1::bigint[]) AND status = 'draft' ORDER BY id`,
+    [ids]
+  );
+  const rows = await query<Omit<TaskMail, "sent" | "drafts"> & { task_id: string; sent_subject: string | null; sent_body: string | null; sent_at: string | null; sent_by: string | null; sent_source: MessageSource | null }>(
     `SELECT t.id::text AS task_id,
             CASE WHEN s.channel = t.step_channel THEN coalesce(s.subject, '') ELSE '' END AS baseline_subject,
             CASE WHEN s.channel = t.step_channel THEN coalesce(s.body, '') ELSE '' END AS baseline_body,
@@ -456,6 +461,7 @@ export async function fetchTaskMail(tasks: { id: string; step_channel: string }[
         city: r.city,
         to_email: r.to_email,
         sent: r.sent_body !== null ? { subject: r.sent_subject ?? "", body: r.sent_body, at: r.sent_at, by: r.sent_by, source: r.sent_source ?? "human" } : null,
+        drafts: drafts.filter((d) => d.task_id === r.task_id).map((d) => ({ id: d.id, subject: d.subject, body: d.body, facts_used: d.facts_used ?? [], notes: d.notes, at: d.at })),
       } satisfies TaskMail,
     ])
   );
