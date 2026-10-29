@@ -6,6 +6,7 @@ import { CHANNEL_CHIP, DUE_TONE, dueInfo, formatDate, todayUtc } from "@/lib/cam
 import { timeAgo } from "@/lib/time-ago";
 import { TaskActions } from "./task-actions";
 import { TaskEmail } from "./task-email";
+import { fetchMailAddress } from "@/lib/mail/account";
 import { CampaignFilter } from "./campaign-filter";
 import { PlaybookPanel } from "../campaigns/playbook-panel";
 
@@ -49,7 +50,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
   const tab: TaskTab = explicitTab ?? (first.counts.overdue > 0 ? "overdue" : "today");
   const { rows, counts } = tab === (explicitTab ?? "today") ? first : await fetchTasks({ actor, scope, tab, userId, campaignId });
 
-  const playbooks = await fetchPlaybooks(rows.map((r) => r.campaign_id));
+  const [playbooks, senderEmail] = await Promise.all([fetchPlaybooks(rows.map((r) => r.campaign_id)), fetchMailAddress(actor.id)]);
 
   const qs = (over: Record<string, string | undefined>) => {
     const p = new URLSearchParams();
@@ -187,7 +188,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
                       </details>
                     )}
                     <PlaybookPanel playbook={playbooks[t.campaign_id]} />
-                    {t.mail && <TaskEmail taskId={t.id} status={t.status} canAct={mayAct && t.enrollment_status !== "stopped" && t.campaign_status !== "paused"} mail={t.mail} senderName={actor.name} />}
+                    {t.mail && <TaskEmail taskId={t.id} status={t.status} canAct={mayAct && t.enrollment_status !== "stopped" && t.campaign_status !== "paused"} mail={t.mail} senderName={actor.name} senderEmail={senderEmail} />}
                     {t.status !== "pending" && (
                       <p className="text-xs text-zinc-500">
                         {t.status === "done" ? "Done" : "Skipped"} by {t.completed_by_name ?? "someone"} {t.completed_at ? timeAgo(t.completed_at) : ""}

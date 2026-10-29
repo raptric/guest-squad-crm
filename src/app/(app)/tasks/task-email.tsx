@@ -1,7 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { diffWords, fillPlaceholders, leftoverPlaceholders, type MailDraft, type TaskMail } from "@/lib/campaign-messages-format";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { diffWords, fillPlaceholders, leftoverPlaceholders, messageSource, type MailDraft, type TaskMail } from "@/lib/campaign-messages-format";
 import { getEmailDraft, setEmailDraft } from "./email-draft-store";
 
 const field = "w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-100";
@@ -13,8 +15,12 @@ type Written = MailDraft & { words: number; warnings: string[] };
 // The email of an Initial Email or Follow-up Email task: the campaign's baseline, the AI's drafts for this company, a box to
 // prepare the email in, and, once the task is done, the email that was sent. What is in the box is confirmed when the task is
 // marked done.
-export function TaskEmail({ taskId, status, canAct, mail, senderName }: { taskId: string; status: string; canAct: boolean; mail: TaskMail; senderName: string }) {
+export function TaskEmail({ taskId, status, canAct, mail, senderName, senderEmail }: { taskId: string; status: string; canAct: boolean; mail: TaskMail; senderName: string; senderEmail: string | null }) {
+  const router = useRouter();
   const existing = getEmailDraft(taskId);
+  const [confirmSend, setConfirmSend] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
   const [open, setOpen] = useState(Boolean(existing));
   const [subject, setSubject] = useState(existing?.subject ?? "");
   const [body, setBody] = useState(existing?.body ?? "");
@@ -97,6 +103,26 @@ export function TaskEmail({ taskId, status, canAct, mail, senderName }: { taskId
     setRemaining(data.remaining ?? null);
     setThin(Boolean(data.thin));
     setShowDrafts(true);
+  }
+
+  async function send() {
+    setSending(true);
+    setSendError(null);
+    const draft = getEmailDraft(taskId);
+    const res = await fetch(`/api/campaign-tasks/${taskId}/send`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ subject, body, source: messageSource({ subject, body }, draft ? { origin: draft.origin, subject: draft.startedSubject, body: draft.startedBody } : null) }),
+    });
+    setSending(false);
+    const data = (await res.json().catch(() => ({}))) as { error?: string };
+    if (!res.ok) {
+      setSendError(data.error ?? "The email could not be sent");
+      return;
+    }
+    setEmailDraft(taskId, null);
+    setConfirmSend(false);
+    router.refresh();
   }
 
   const leftover = leftoverPlaceholders(`${subject}\n${body}`);
@@ -256,7 +282,50 @@ export function TaskEmail({ taskId, status, canAct, mail, senderName }: { taskId
               Discard
             </button>
           </div>
-          <p className="text-xs text-zinc-500">Send it from your own mail, then click Done. You will be asked to confirm what you sent, so the next follow-up knows what was said.</p>
+
+          {senderEmail && mail.to_email ? (
+            confirmSend ? (
+              <div className="space-y-2 rounded-lg border border-emerald-200 bg-emerald-50/50 p-3">
+                <p className="text-sm text-zinc-800">
+                  Send this email now from <span className="font-medium">{senderEmail}</span> to <span className="font-medium">{mail.to_email}</span>? The step is marked done and a copy stays in your Gmail Sent folder.
+                </p>
+                {sendError && <p className="text-sm text-red-600">{sendError}</p>}
+                <div className="flex gap-2">
+                  <button type="button" onClick={send} disabled={sending} className="rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50">
+                    {sending ? "Sending…" : "Send now"}
+                  </button>
+                  <button type="button" onClick={() => setConfirmSend(false)} disabled={sending} className="rounded-lg px-3 py-1.5 text-sm text-zinc-600 hover:bg-white">
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setConfirmSend(true)}
+                  disabled={!subject.trim() || !body.trim() || leftover.length > 0}
+                  className="rounded-lg bg-emerald-600 px-3.5 py-1.5 text-sm font-medium text-white shadow-sm hover:bg-emerald-700 disabled:opacity-40"
+                >
+                  Send email
+                </button>
+                <span className="text-xs text-zinc-500">
+                  From {senderEmail} to {mail.to_email}
+                </span>
+              </div>
+            )
+          ) : (
+            <p className="text-xs text-zinc-500">
+              {!senderEmail ? (
+                <>
+                  To send from here, <Link href="/profile" className="text-sky-700 hover:underline">add your Gmail and app password on your Profile</Link>. Or send it from your own mail, then click Done and confirm what you sent.
+                </>
+              ) : (
+                "This contact has no email address on file. Send it another way, then click Done and confirm what you sent."
+              )}
+            </p>
+          )}
+          <p className="text-xs text-zinc-500">If you send it yourself instead, click Done afterwards. You will be asked to confirm what you sent, so the next follow-up knows what was said.</p>
         </div>
       )}
     </div>

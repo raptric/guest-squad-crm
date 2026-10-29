@@ -23,6 +23,7 @@ export function CampaignCard({
   enrollNote,
   canAct,
   senderName,
+  senderEmail,
   enrollments,
   playbooks,
   campaigns,
@@ -36,6 +37,7 @@ export function CampaignCard({
   enrollNote: string | null;
   canAct: boolean;
   senderName: string;
+  senderEmail: string | null;
   enrollments: EnrollmentRow[];
   playbooks: Record<string, Playbook>;
   campaigns: CampaignOption[];
@@ -72,7 +74,7 @@ export function CampaignCard({
       ) : (
         <div className="space-y-5">
           {enrollments.map((e) => (
-            <EnrollmentBlock key={e.id} enrollment={e} playbook={playbooks[e.campaign_id]} canAct={canAct} today={today} senderName={senderName} />
+            <EnrollmentBlock key={e.id} enrollment={e} playbook={playbooks[e.campaign_id]} canAct={canAct} today={today} senderName={senderName} senderEmail={senderEmail} />
           ))}
           {!mayEnroll && enrollNote && <p className="text-xs text-zinc-500">{enrollNote}</p>}
         </div>
@@ -93,7 +95,7 @@ export function CampaignCard({
   );
 }
 
-function EnrollmentBlock({ enrollment: e, playbook, canAct, today, senderName }: { enrollment: EnrollmentRow; playbook: Playbook | undefined; canAct: boolean; today: string; senderName: string }) {
+function EnrollmentBlock({ enrollment: e, playbook, canAct, today, senderName, senderEmail }: { enrollment: EnrollmentRow; playbook: Playbook | undefined; canAct: boolean; today: string; senderName: string; senderEmail: string | null }) {
   const router = useRouter();
   const [stopping, setStopping] = useState(false);
   const [note, setNote] = useState("");
@@ -184,7 +186,7 @@ function EnrollmentBlock({ enrollment: e, playbook, canAct, today, senderName }:
                   {t.notes ? `: ${t.notes}` : ""}
                 </p>
               )}
-              {t.mail && <TaskEmail taskId={t.id} status={t.status} canAct={canAct && e.status !== "stopped" && !(e.status === "active" && e.campaign_status === "paused")} mail={t.mail} senderName={senderName} />}
+              {t.mail && <TaskEmail taskId={t.id} status={t.status} canAct={canAct && e.status !== "stopped" && !(e.status === "active" && e.campaign_status === "paused")} mail={t.mail} senderName={senderName} senderEmail={senderEmail} />}
               <TaskActions taskId={t.id} status={t.status} channel={t.step_channel} canAct={canAct && e.status !== "stopped" && !(e.status === "active" && e.campaign_status === "paused")} />
             </li>
           );
