@@ -188,7 +188,7 @@ export type Runtime = {
 export async function prepare(actor: Actor, promptKey: string): Promise<Runtime> {
   // The database is a network hop away, so everything that does not depend on anything else is fetched at once.
   const [[settings], [{ used }], prompts, creds] = await Promise.all([
-    query<{ active_provider: string | null; daily_limit: number; variants: number; creativity: "low" | "medium" | "high" }>("SELECT active_provider, daily_limit, variants, creativity FROM ai_settings WHERE id = 1"),
+    query<{ active_provider: string | null; daily_limit: number; variants: number; creativity: "low" | "medium" | "high"; writing_enabled: boolean }>("SELECT active_provider, daily_limit, variants, creativity, writing_enabled FROM ai_settings WHERE id = 1"),
     query<{ used: number }>(
       "SELECT count(*)::int AS used FROM ai_usage WHERE user_id = $1 AND purpose <> 'test' AND ok AND (created_at AT TIME ZONE 'UTC')::date = (now() AT TIME ZONE 'UTC')::date",
       [actor.id],
@@ -196,6 +196,7 @@ export async function prepare(actor: Actor, promptKey: string): Promise<Runtime>
     fetchPrompts(),
     query<{ provider: string; api_key_enc: string | null; model: string }>("SELECT provider, api_key_enc, model FROM ai_providers"),
   ]);
+  if (!settings?.writing_enabled) throw new GenerateError(actor.role === "super_admin" ? "AI writing is switched off. Turn it on in Settings → AI." : "AI writing is switched off.", 403);
   const provider = settings?.active_provider;
   if (!settings || !provider || !isProviderId(provider)) {
     throw new GenerateError(actor.role === "super_admin" ? "No AI service is in use yet. Choose one in Settings → AI." : "AI writing is not set up yet. Ask an admin to set it up.", 409);

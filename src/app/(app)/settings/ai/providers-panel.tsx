@@ -194,9 +194,29 @@ function Writing({ settings }: { settings: AiSettings }) {
     router.refresh();
   }
 
+  async function toggle(next: boolean) {
+    setBusy(true);
+    setNote(null);
+    const r = await send("/api/admin/ai/settings", "PATCH", { writing_enabled: next });
+    setBusy(false);
+    setNote(r.ok ? { kind: "ok", text: next ? "AI writing is on." : "AI writing is off." } : { kind: "error", text: String(r.data.error ?? "Couldn't save") });
+    router.refresh();
+  }
+
   return (
     <section className="space-y-3 rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
       <h2 className="text-base font-semibold text-zinc-900">Writing settings</h2>
+      <label className={`flex items-start gap-3 rounded-xl p-3 ${settings.writingEnabled ? "bg-emerald-50" : "bg-amber-50"}`}>
+        <input type="checkbox" checked={settings.writingEnabled} disabled={busy} onChange={(e) => toggle(e.target.checked)} className="mt-1 h-4 w-4" />
+        <span>
+          <span className="block text-sm font-medium text-zinc-900">Write with AI is {settings.writingEnabled ? "on" : "off"}</span>
+          <span className="block text-xs text-zinc-600">
+            {settings.writingEnabled
+              ? "People see Generate with AI on campaign steps and Write for this company on email tasks. Untick to switch it off for everyone."
+              : "The Generate with AI and Write for this company buttons are hidden for everyone, and the CRM refuses AI writing requests. Tick to switch it on."}
+          </span>
+        </span>
+      </label>
       <div className="grid gap-4 sm:grid-cols-3">
         <label className="space-y-1">
           <span className="text-sm font-medium text-zinc-700">Versions per click</span>

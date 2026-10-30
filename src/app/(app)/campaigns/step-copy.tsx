@@ -35,6 +35,7 @@ export function StepCopy({
   stepIndex,
   senderName,
   hasPlaybook,
+  aiWriting,
 }: {
   value: StepCopyValue;
   onChange: (next: StepCopyValue) => void;
@@ -42,6 +43,7 @@ export function StepCopy({
   stepIndex: number;
   senderName: string;
   hasPlaybook: boolean;
+  aiWriting: boolean;
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -101,10 +103,12 @@ export function StepCopy({
       </label>
       <label className="block space-y-1">
         <span className="text-xs font-medium text-zinc-500">Email</span>
-        <RichEditor value={value.body} onChange={(b) => edit({ body: b })} placeholder="Write it here, or click Generate with AI. Use {first_name}, {company_name}, {city} and {sender_name} where the real values will go." ariaLabel="Baseline email" minHeight="12rem" />
+        <RichEditor value={value.body} onChange={(b) => edit({ body: b })} placeholder={`Write it here${aiWriting ? ", or click Generate with AI" : ""}. Use {first_name}, {company_name}, {city} and {sender_name} where the real values will go.`} ariaLabel="Baseline email" minHeight="12rem" />
       </label>
 
       <div className="flex flex-wrap items-center gap-2">
+        {aiWriting && (
+          <>
         <button type="button" onClick={generate} disabled={busy} className="rounded-lg bg-sky-700 px-3 py-2 text-sm font-medium text-white hover:bg-sky-800 disabled:opacity-50">
           {busy ? "Writing…" : hasText || versions ? "Generate again" : "Generate with AI"}
         </button>
@@ -115,6 +119,8 @@ export function StepCopy({
           placeholder="Anything specific? e.g. shorter, mention the pilot (optional)"
           className={`${field} min-w-0 flex-1 sm:max-w-sm`}
         />
+          </>
+        )}
         {hasText && <TestEmail getEmail={() => ({ subject: sample(value.subject), body: sample(value.body) })} />}
         {hasText && (
           <button type="button" onClick={() => setShowRead((v) => !v)} className="text-sm text-sky-700 hover:underline">
@@ -122,7 +128,7 @@ export function StepCopy({
           </button>
         )}
       </div>
-      {!hasPlaybook && <p className="text-xs text-amber-700">Fill in the Messaging section first (angle and main pain). The email is written from it.</p>}
+      {aiWriting && !hasPlaybook && <p className="text-xs text-amber-700">Fill in the Messaging section first (angle and main pain). The email is written from it.</p>}
       {error && <p className="text-sm text-red-600">{error}</p>}
       {remaining !== null && <p className="text-xs text-zinc-400">{remaining} AI {remaining === 1 ? "write" : "writes"} left today.</p>}
 

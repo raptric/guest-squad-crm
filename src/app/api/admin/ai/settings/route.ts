@@ -7,15 +7,20 @@ const fail = (error: string, status = 400) => NextResponse.json({ error }, { sta
 
 // Choose the provider the CRM uses and the per-person daily limit. Admin only.
 //   { active_provider?: "anthropic" | "openai" | null }
+//   { writing_enabled?: boolean }   the master switch for AI writing
 //   { daily_limit?: number }
 //   { variants?: 1 | 2 | 3, creativity?: "low" | "medium" | "high" }   how many versions to write, and how varied
 export async function PATCH(request: Request) {
   const actor = await getCurrentUser();
   if (!actor || actor.role !== "super_admin") return fail("Only admins can change AI settings.", 403);
 
-  const body = (await request.json().catch(() => ({}))) as { active_provider?: unknown; daily_limit?: unknown; variants?: unknown; creativity?: unknown };
-  if (body.active_provider === undefined && body.daily_limit === undefined && body.variants === undefined && body.creativity === undefined) return fail("Nothing to change.");
+  const body = (await request.json().catch(() => ({}))) as { writing_enabled?: unknown; active_provider?: unknown; daily_limit?: unknown; variants?: unknown; creativity?: unknown };
+  if (body.writing_enabled === undefined && body.active_provider === undefined && body.daily_limit === undefined && body.variants === undefined && body.creativity === undefined) return fail("Nothing to change.");
 
+  if (body.writing_enabled !== undefined) {
+    if (typeof body.writing_enabled !== "boolean") return fail("Writing must be on or off.");
+    await query("UPDATE ai_settings SET writing_enabled = $1, updated_at = now() WHERE id = 1", [body.writing_enabled]);
+  }
   if (body.variants !== undefined) {
     const n = Number(body.variants);
     if (!Number.isInteger(n) || n < 1 || n > 3) return fail("Versions per click must be 1, 2 or 3.");

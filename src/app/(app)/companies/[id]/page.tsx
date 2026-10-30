@@ -48,6 +48,7 @@ import { PipelineEditor } from "./pipeline-editor";
 import { fetchPipeline } from "@/lib/pipeline";
 import { timeAgo } from "@/lib/time-ago";
 import { MdText } from "@/components/md-text";
+import { fetchAiWritingEnabled } from "@/lib/ai/enabled";
 import { fetchSignature } from "@/lib/mail/signature";
 import { effectiveSignature, withSignature } from "@/lib/signature-format";
 
@@ -216,12 +217,13 @@ export default async function CompanyDetailPage({
   const ready = eligibility.ok;
   const mayEnroll = ready && isOwner;
   const [enrollments, campaigns] = await Promise.all([fetchCompanyEnrollments(companyId), mayEnroll && actor ? fetchOpenCampaigns(actor) : Promise.resolve([])]);
-  const [playbooks, fits, sentMessages, senderEmail, savedSignature] = await Promise.all([
+  const [playbooks, fits, sentMessages, senderEmail, savedSignature, aiWriting] = await Promise.all([
     fetchPlaybooks(enrollments.map((e) => e.campaign_id)),
     fetchFitForCompany(companyId, campaigns.map((c) => c.id)),
     fetchCompanyMessages(companyId),
     actor ? fetchMailAddress(actor.id) : Promise.resolve(null),
     actor ? fetchSignature(actor.id) : Promise.resolve(""),
+    fetchAiWritingEnabled(),
   ]);
   const canActOnTasks =
     !!actor &&
@@ -546,6 +548,7 @@ export default async function CompanyDetailPage({
               senderName={actor?.name ?? ""}
               senderEmail={senderEmail}
               signature={effectiveSignature(savedSignature, actor?.name ?? "")}
+              aiWriting={aiWriting}
               enrollments={enrollments}
               playbooks={playbooks}
               campaigns={campaigns.map((c) => ({ ...c, fit: fits[c.id] ?? null }))}

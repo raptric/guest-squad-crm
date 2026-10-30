@@ -40,6 +40,7 @@ export function TaskEmail({
   senderName,
   senderEmail,
   signature,
+  aiWriting,
 }: {
   taskId: string;
   status: string;
@@ -49,6 +50,7 @@ export function TaskEmail({
   senderName: string;
   senderEmail: string | null;
   signature: string;
+  aiWriting: boolean;
 }) {
   const router = useRouter();
   const existing = getEmailDraft(taskId);
@@ -188,9 +190,11 @@ export function TaskEmail({
             Use baseline
           </button>
         )}
+        {aiWriting && (
         <button type="button" onClick={write} disabled={writing} className="rounded-lg bg-violet-700 px-3 py-1.5 text-sm font-medium text-white shadow-sm hover:bg-violet-800 disabled:opacity-60">
           {writing ? "Writing…" : drafts.length ? "Write again" : "Write for this company"}
         </button>
+        )}
         {!open && (
           <button type="button" onClick={() => start("human")} className="rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50">
             Write it myself
@@ -198,13 +202,13 @@ export function TaskEmail({
         )}
         <span className="ml-auto flex flex-wrap items-center gap-x-3 gap-y-1">
           {hasBaseline && <Link2 onClick={() => setShowOriginal((v) => !v)}>{showOriginal ? "Hide baseline" : "View baseline"}</Link2>}
-          {!askInstruction && <Link2 onClick={() => setAskInstruction(true)}>Add an instruction</Link2>}
+          {aiWriting && !askInstruction && <Link2 onClick={() => setAskInstruction(true)}>Add an instruction</Link2>}
           {drafts.length > 0 && !showDrafts && <Link2 onClick={() => setShowDrafts(true)}>{`Show AI ${drafts.length === 1 ? "draft" : "drafts"} (${drafts.length})`}</Link2>}
         </span>
       </div>
-      {!hasBaseline && !open && <p className="-mt-1 text-xs text-zinc-400">This step has no baseline email, so the AI writes from the campaign and what the CRM knows about the company.</p>}
+      {!hasBaseline && !open && <p className="-mt-1 text-xs text-zinc-400">{aiWriting ? "This step has no baseline email, so the AI writes from the campaign and what the CRM knows about the company." : "This step has no baseline email. Write it yourself."}</p>}
 
-      {askInstruction && <input value={instruction} maxLength={300} onChange={(e) => setInstruction(e.target.value)} placeholder="Anything specific for the AI? e.g. shorter, mention their Booking.com rating" className={field} />}
+      {aiWriting && askInstruction && <input value={instruction} maxLength={300} onChange={(e) => setInstruction(e.target.value)} placeholder="Anything specific for the AI? e.g. shorter, mention their Booking.com rating" className={field} />}
       {writeError && <p className="text-sm text-red-600">{writeError}</p>}
 
       {showOriginal && hasBaseline && (

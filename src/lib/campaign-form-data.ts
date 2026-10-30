@@ -1,11 +1,13 @@
 import { query } from "@/lib/db";
 import type { Actor } from "@/lib/assignment";
+import { fetchAiWritingEnabled } from "@/lib/ai/enabled";
 
 // What the campaign form needs besides the campaign itself: the Settings lists, the teams an admin can pick from
 // (everyone else only has their own), and the people an admin can hand a campaign to.
 export async function loadCampaignFormData(actor: Actor & { name: string }) {
   const isAdmin = actor.role === "super_admin";
-  const [lists, teams, users] = await Promise.all([
+  const [aiWriting, lists, teams, users] = await Promise.all([
+    fetchAiWritingEnabled(),
     query<{ field_name: string; value: string }>(
       "SELECT field_name, value FROM picklist_values WHERE is_active AND field_name IN ('outreach_angle', 'key_differentiator', 'company_type', 'property_type', 'country') ORDER BY sort_order, id"
     ),
@@ -30,6 +32,7 @@ export async function loadCampaignFormData(actor: Actor & { name: string }) {
       role: actor.role,
       id: String(actor.id),
       name: actor.name,
+      aiWriting,
       teamId: actor.team_id !== null && actor.team_id !== undefined ? String(actor.team_id) : null,
       teamName: teams.find((t) => String(t.id) === String(actor.team_id))?.name ?? null,
     },

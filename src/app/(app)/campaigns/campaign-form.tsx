@@ -33,7 +33,7 @@ export type CampaignFormInitial = {
 
 type Lists = { angles: string[]; differentiators: string[]; companyTypes: string[]; propertyTypes: string[]; countries: string[] };
 type Preview = { strong: number; partial: number; weak: number; total: number };
-type Viewer = { role: string; teamId: string | null; teamName: string | null; id: string; name: string };
+type Viewer = { aiWriting: boolean; role: string; teamId: string | null; teamName: string | null; id: string; name: string };
 
 const field = "w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-100";
 
@@ -479,6 +479,7 @@ export function CampaignForm({
                   getDraft={getDraft}
                   stepIndex={i}
                   senderName={viewer.name}
+                  aiWriting={viewer.aiWriting}
                   hasPlaybook={Boolean(angle || pain.trim())}
                 />
               )}
