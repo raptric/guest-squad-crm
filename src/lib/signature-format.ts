@@ -19,5 +19,14 @@ export function dropTrailingName(body: string, names: string[]): string {
   return lines.join("\n").replace(/\s+$/, "");
 }
 
-// The full text of an email: what was written, a blank line, then the signature.
-export const withSignature = (body: string, signature: string) => (signature.trim() ? `${body.trim()}\n\n${signature.trim()}` : body.trim());
+// Writing {{sender.signature}} in an email puts the signature at that spot instead of at the end.
+const CODE = /\{\{\s*sender\.signature\s*\}\}/;
+export const hasSignatureCode = (body: string) => CODE.test(body);
+
+// The full text of an email: what was written, then the signature (a blank line between them), or the signature where the
+// {{sender.signature}} code was written.
+export function withSignature(body: string, signature: string): string {
+  const sig = signature.trim();
+  if (CODE.test(body)) return body.replace(new RegExp(CODE.source, "g"), () => sig).replace(/\n{3,}/g, "\n\n").trim();
+  return sig ? `${body.trim()}\n\n${sig}` : body.trim();
+}

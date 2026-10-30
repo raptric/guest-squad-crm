@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { diffWords, fillPlaceholders, leftoverPlaceholders, messageSource, type MailDraft, type TaskMail } from "@/lib/campaign-messages-format";
-import { dropTrailingName, withSignature } from "@/lib/signature-format";
+import { dropTrailingName, hasSignatureCode, withSignature } from "@/lib/signature-format";
 import { TestEmail } from "@/components/test-email";
 import { RichEditor } from "@/components/rich-editor";
 import { MdText } from "@/components/md-text";
@@ -290,7 +290,8 @@ export function TaskEmail({
           </div>
           <input value={subject} maxLength={300} onChange={(e) => edit({ subject: e.target.value })} placeholder="Subject" aria-label="Subject" className={`${field} font-medium`} />
           <RichEditor value={body} onChange={(b) => edit({ body: b })} placeholder="The email" ariaLabel="Email" minHeight="14rem" />
-          {signature && (
+          {hasSignatureCode(body) && <p className="text-xs text-zinc-500">Your signature goes where {"{{sender.signature}}"} is, when the email is sent.</p>}
+          {signature && !hasSignatureCode(body) && (
             <div className="rounded-md border border-dashed border-zinc-200 bg-zinc-50/70 px-3 py-2">
               <MdText text={signature} className="text-sm text-zinc-500" />
               <p className="mt-1 text-xs text-zinc-400">

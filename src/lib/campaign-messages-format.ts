@@ -32,9 +32,12 @@ export function fillPlaceholders(text: string, v: FillValues): string {
     .replaceAll("{sender_name}", v.sender_name.trim() || "{sender_name}");
 }
 
-// Placeholders still in the text, which would go out as they are.
+// Placeholders still in the text, which would go out as they are: {names} and {{codes}}. {{sender.signature}} is not one, because
+// it is filled in with the signature when the email is sent.
 export function leftoverPlaceholders(text: string): string[] {
-  return [...new Set([...text.matchAll(/\{[A-Za-z_][A-Za-z0-9_]*\}/g)].map((m) => m[0]))];
+  const codes = [...text.matchAll(/\{\{[^{}\n]*\}\}/g)].map((m) => m[0]).filter((c) => !/^\{\{\s*sender\.signature\s*\}\}$/.test(c));
+  const rest = text.replace(/\{\{[^{}\n]*\}\}/g, " ");
+  return [...new Set([...codes, ...[...rest.matchAll(/\{[A-Za-z_][A-Za-z0-9_]*\}/g)].map((m) => m[0])])];
 }
 
 // How the text that was sent came about, judged against the baseline it started from (if it did).
