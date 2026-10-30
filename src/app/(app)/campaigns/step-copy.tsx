@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { RichEditor } from "@/components/rich-editor";
+import { TestEmail } from "@/components/test-email";
 import { MdText } from "@/components/md-text";
 
 export type CopySource = "" | "ai" | "edited" | "human";
@@ -114,6 +115,7 @@ export function StepCopy({
           placeholder="Anything specific? e.g. shorter, mention the pilot (optional)"
           className={`${field} min-w-0 flex-1 sm:max-w-sm`}
         />
+        {hasText && <TestEmail getEmail={() => ({ subject: sample(value.subject), body: sample(value.body) })} />}
         {hasText && (
           <button type="button" onClick={() => setShowRead((v) => !v)} className="text-sm text-sky-700 hover:underline">
             {showRead ? "Hide how it reads" : "How it reads"}
@@ -126,7 +128,7 @@ export function StepCopy({
 
       {showRead && hasText && (
         <div className="rounded-lg bg-zinc-50 p-3 text-sm text-zinc-800">
-          <p className="mb-1 text-xs text-zinc-500">With sample names filled in (Alex, Harbor Inn, Austin):</p>
+          <p className="mb-1 text-xs text-zinc-500">With sample names filled in (Alex, Harbor Inn, Austin). Send test email sends it the same way:</p>
           {value.subject && <p className="font-medium">Subject: {sample(value.subject)}</p>}
           <MdText text={sample(value.body)} className="mt-1" />
         </div>

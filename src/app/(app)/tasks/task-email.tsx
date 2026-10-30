@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { diffWords, fillPlaceholders, leftoverPlaceholders, messageSource, type MailDraft, type TaskMail } from "@/lib/campaign-messages-format";
 import { dropTrailingName, withSignature } from "@/lib/signature-format";
+import { TestEmail } from "@/components/test-email";
 import { RichEditor } from "@/components/rich-editor";
 import { MdText } from "@/components/md-text";
 import { mdToHtml, mdToPlain } from "@/lib/rich-text";
@@ -317,6 +318,7 @@ export function TaskEmail({
                   Open in my email app
                 </a>
               )}
+              <TestEmail getEmail={() => ({ subject, body })} defaultTo={senderEmail ?? ""} />
               <Link2 onClick={close}>Discard</Link2>
             </span>
           </div>
