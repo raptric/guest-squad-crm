@@ -10,7 +10,7 @@ STRUCTURE
 - One pain and one idea per email. Use proof only if it is in the knowledge. Never invent numbers, names or reviews.
 - Exactly one ask, as a low-pressure question.
 - Plain text. No links or attachments in the first email.
-- Sign off with the sender's own name only.
+- End with a short closing such as "Best,". The sender's signature is added automatically, so never write a name.
 
 NEVER WRITE
 "I hope this finds you well", "touching base", "circling back", "just following up", "synergy", "game-changer", "revolutionary", "best-in-class", "cutting-edge", "leverage", "I wanted to reach out", "as per my last email".

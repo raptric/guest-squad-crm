@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { RichEditor } from "@/components/rich-editor";
+import { MdText } from "@/components/md-text";
 
 export type CopySource = "" | "ai" | "edited" | "human";
 export type StepCopyValue = {
@@ -98,14 +100,7 @@ export function StepCopy({
       </label>
       <label className="block space-y-1">
         <span className="text-xs font-medium text-zinc-500">Email</span>
-        <textarea
-          rows={9}
-          maxLength={6000}
-          value={value.body}
-          onChange={(e) => edit({ body: e.target.value })}
-          placeholder="Write it here, or click Generate with AI. Use {first_name}, {company_name}, {city} and {sender_name} where the real values will go."
-          className={field}
-        />
+        <RichEditor value={value.body} onChange={(b) => edit({ body: b })} placeholder="Write it here, or click Generate with AI. Use {first_name}, {company_name}, {city} and {sender_name} where the real values will go." ariaLabel="Baseline email" minHeight="12rem" />
       </label>
 
       <div className="flex flex-wrap items-center gap-2">
@@ -133,7 +128,7 @@ export function StepCopy({
         <div className="rounded-lg bg-zinc-50 p-3 text-sm text-zinc-800">
           <p className="mb-1 text-xs text-zinc-500">With sample names filled in (Alex, Harbor Inn, Austin):</p>
           {value.subject && <p className="font-medium">Subject: {sample(value.subject)}</p>}
-          <p className="mt-1 whitespace-pre-wrap">{sample(value.body)}</p>
+          <MdText text={sample(value.body)} className="mt-1" />
         </div>
       )}
 
@@ -154,7 +149,7 @@ export function StepCopy({
                   {v.words} words
                 </p>
                 <p className="mt-1 text-sm font-medium text-zinc-900">{v.subject || "(no subject)"}</p>
-                <p className="mt-1 flex-1 whitespace-pre-wrap text-sm text-zinc-700">{v.body}</p>
+                <MdText text={v.body} className="mt-1 flex-1 text-sm text-zinc-700" />
                 {v.warnings.length > 0 && (
                   <ul className="mt-2 space-y-0.5 text-xs text-amber-700">
                     {v.warnings.map((w) => (

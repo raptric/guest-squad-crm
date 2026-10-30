@@ -54,7 +54,7 @@ export async function verifyAccount(address: string, password: string): Promise<
   }
 }
 
-export type SendInput = { fromName: string; fromAddress: string; password: string; to: string; subject: string; text: string };
+export type SendInput = { fromName: string; fromAddress: string; password: string; to: string; subject: string; text: string; html?: string };
 
 export async function sendMail(m: SendInput): Promise<{ messageId: string }> {
   try {
@@ -63,6 +63,7 @@ export async function sendMail(m: SendInput): Promise<{ messageId: string }> {
       to: m.to,
       subject: m.subject,
       text: m.text,
+      ...(m.html ? { html: m.html } : {}),
     });
     return { messageId: String(info.messageId ?? "") };
   } catch (e) {

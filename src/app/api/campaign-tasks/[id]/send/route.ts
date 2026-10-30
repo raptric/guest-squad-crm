@@ -6,6 +6,9 @@ import { isEmailChannel, leftoverPlaceholders, type MessageSource } from "@/lib/
 import { applyTaskAction } from "@/lib/campaign-task-actions";
 import { getMailCredentials } from "@/lib/mail/account";
 import { MailError, sendMail } from "@/lib/mail/gmail";
+import { fetchSignature } from "@/lib/mail/signature";
+import { emailHtml, mdToPlain } from "@/lib/rich-text";
+import { dropTrailingName, effectiveSignature, withSignature } from "@/lib/signature-format";
 
 const fail = (error: string, status = 400, extra: Record<string, unknown> = {}) => NextResponse.json({ error, ...extra }, { status });
 
@@ -61,15 +64,19 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   );
   if (sent >= MAX_SENDS_PER_DAY) return fail(`You have sent ${MAX_SENDS_PER_DAY} emails from the CRM today, which is the daily limit. It restarts at midnight UTC.`, 429);
 
+  // every email ends with the sender's signature; a sign-off name already at the end of the text would appear twice
+  const signature = effectiveSignature(await fetchSignature(actor.id), actor.name);
+  const written = dropTrailingName(text, [actor.name]);
+  const full = withSignature(written, signature);
   let messageId = "";
   try {
-    messageId = (await sendMail({ fromName: actor.name, fromAddress: creds.address, password: creds.password, to: to.email, subject, text })).messageId;
+    messageId = (await sendMail({ fromName: actor.name, fromAddress: creds.address, password: creds.password, to: to.email, subject, text: mdToPlain(full), html: emailHtml(full) })).messageId;
   } catch (e) {
     return fail(e instanceof MailError ? e.message : "The email could not be sent.", 502);
   }
 
   try {
-    await applyTaskAction(actor, task, "done", `Emailed ${to.email} from ${creds.address}.`, { subject, body: text, source, gmailMessageId: messageId.slice(0, 200) });
+    await applyTaskAction(actor, task, "done", `Emailed ${to.email} from ${creds.address}.`, { subject, body: written, signature, source, gmailMessageId: messageId.slice(0, 200) });
   } catch {
     return fail("The email was sent, but the CRM could not mark the step done. Mark it done by hand and paste the email there.", 500, { sent: true });
   }

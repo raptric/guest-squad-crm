@@ -2,7 +2,7 @@ import { withTransaction } from "@/lib/db";
 import { activityTypeFor, type TaskForAction } from "@/lib/campaigns";
 import type { MessageSource } from "@/lib/campaign-messages-format";
 
-export type SentMessage = { subject: string; body: string; source: MessageSource; gmailMessageId?: string | null };
+export type SentMessage = { subject: string; body: string; signature?: string; source: MessageSource; gmailMessageId?: string | null };
 
 // Tick a task off (done or skipped) or put it back (reopen), and write it on the company's activity timeline. When the last pending
 // task of an enrollment is finished the enrollment is marked completed. On a done email step the email that was sent is recorded.
@@ -31,9 +31,9 @@ export async function applyTaskAction(
       if (message) {
         messageId = (
           await client.query(
-            `INSERT INTO campaign_messages (task_id, enrollment_id, campaign_id, company_id, contact_id, step_position, step_day, channel, subject, body, source, status, sent_by, sent_at, gmail_message_id)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'sent', $12, now(), $13) RETURNING id`,
-            [task.id, task.enrollment_id, task.campaign_id, task.company_id, task.contact_id, task.step_position, task.step_day, task.step_channel, message.subject, message.body, message.source, actor.id, message.gmailMessageId ?? null],
+            `INSERT INTO campaign_messages (task_id, enrollment_id, campaign_id, company_id, contact_id, step_position, step_day, channel, subject, body, source, status, sent_by, sent_at, gmail_message_id, signature)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'sent', $12, now(), $13, $14) RETURNING id`,
+            [task.id, task.enrollment_id, task.campaign_id, task.company_id, task.contact_id, task.step_position, task.step_day, task.step_channel, message.subject, message.body, message.source, actor.id, message.gmailMessageId ?? null, message.signature ?? ""],
           )
         ).rows[0].id as string;
       }

@@ -99,7 +99,8 @@ export const TAIL = (versions: number, extra: string) =>
     "Rules that always apply:",
     "- Use only the facts given above. Never invent numbers, names, customers or results. If something is not given, leave it out.",
     `- The only placeholders you may write are ${PLACEHOLDERS.map((p) => `{${p}}`).join(", ")}.`,
-    '- "subject" is one line. "body" is plain text with line breaks, no markdown.',
+    '- "subject" is one line. "body" is text with line breaks. The only formatting allowed is **bold** for a few key words and, where a short list helps, lines that start with "- ". Use them sparingly and no other markdown.',
+    "- The sender's signature (name and contact details) is added under the body automatically. End the body with a short closing line such as \"Best,\" and never write the sender's name or a signature yourself. This replaces any sign-off rule above.",
     ...(extra ? [`- The person writing this campaign asked for: ${extra}`] : []),
   ].join("\n");
 
@@ -112,7 +113,8 @@ export const COMPANY_TAIL = (versions: number, extra: string) =>
     "Rules that always apply:",
     "- Use only the facts given above. Never invent numbers, names, customers or results. If something is not given, leave it out.",
     "- The baseline may contain placeholders in curly braces, such as {company_name} or {first_name}. Replace each one with the real value. Never leave a curly-brace placeholder in the email.",
-    '- "subject" is one line. "body" is plain text with line breaks, no markdown.',
+    '- "subject" is one line. "body" is text with line breaks. The only formatting allowed is **bold** and lines that start with "- ". Keep the baseline formatting; add none of your own if the baseline has none.',
+    "- The sender's signature (name and contact details) is added under the body automatically. End the body with a short closing line such as \"Best,\" and never write the sender's name or a signature yourself. This replaces any sign-off rule above.",
     ...(extra ? [`- The person sending this email asked for: ${extra}`] : []),
   ].join("\n");
 

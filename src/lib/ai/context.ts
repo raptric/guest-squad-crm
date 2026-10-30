@@ -4,6 +4,8 @@ import { fetchFitForCompany } from "@/lib/campaign-fit";
 import { audienceSummary, type Criteria } from "@/lib/campaign-fit-format";
 import type { Actor } from "@/lib/assignment";
 import { fetchKnowledge, fetchRules } from "./content";
+import { fetchSignature } from "@/lib/mail/signature";
+import { effectiveSignature } from "@/lib/signature-format";
 
 // Turns the real data (knowledge, rules, a campaign step, a company, a contact, the sender) into the text for every short code.
 // Server only. Used by the Prompts preview now, and by the Generate buttons later.
@@ -336,8 +338,9 @@ async function contactValues(companyId: number, choice: ContactChoice, notes: st
   };
 }
 
-function senderValues(a: ContextInput["actor"]): Record<string, string> {
+function senderValues(a: ContextInput["actor"], signature: string): Record<string, string> {
   return {
+    "sender.signature": s(signature),
     "sender.name": s(a.name),
     "sender.title": s(a.job_title),
     "sender.phone": s(a.phone),
@@ -346,27 +349,33 @@ function senderValues(a: ContextInput["actor"]): Record<string, string> {
   };
 }
 
+// The signature that goes under the sender's emails: the one they wrote on their Profile, or their name.
+async function senderSignature(a: ContextInput["actor"]): Promise<string> {
+  return effectiveSignature(await fetchSignature(a.id), a.name);
+}
+
 // ---- everything ----
 
 // For a campaign that is still being edited: the form's current content stands in for the saved campaign.
 export async function buildValuesForDraft(input: { actor: ContextInput["actor"]; campaign: DraftCampaign; stepNumber: number; variants: number }): Promise<Record<string, string>> {
-  const [knowledge, rules] = await Promise.all([knowledgeValues(), fetchRules()]);
+  const [knowledge, rules, signature] = await Promise.all([knowledgeValues(), fetchRules(), senderSignature(input.actor)]);
   return {
     ...knowledge,
     rules: rules.text,
     "generation.versions": String(input.variants),
     ...campaignValues(input.campaign, input.stepNumber),
-    ...senderValues(input.actor),
+    ...senderValues(input.actor, signature),
   };
 }
 
 export async function buildValues(input: ContextInput): Promise<ContextResult> {
   const notes: string[] = [];
-  const [campaign, knowledge, rules, settings] = await Promise.all([
+  const [campaign, knowledge, rules, settings, signature] = await Promise.all([
     fetchCampaign(input.campaignId, input.campaignActor ?? input.actor),
     knowledgeValues(),
     fetchRules(),
     query<{ variants: number }>("SELECT variants FROM ai_settings WHERE id = 1"),
+    senderSignature(input.actor),
   ]);
   if (!campaign) return { values: {}, notes: ["That campaign was not found."] };
   if (!campaign.steps[input.stepNumber - 1]) notes.push("That step does not exist in this campaign.");
@@ -376,7 +385,7 @@ export async function buildValues(input: ContextInput): Promise<ContextResult> {
     rules: rules.text,
     "generation.versions": String(settings[0]?.variants ?? 2),
     ...campaignValues(campaign, input.stepNumber),
-    ...senderValues(input.actor),
+    ...senderValues(input.actor, signature),
   };
 
   if (input.companyId) {

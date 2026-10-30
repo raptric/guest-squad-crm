@@ -47,6 +47,9 @@ import { CampaignCard } from "./campaign-card";
 import { PipelineEditor } from "./pipeline-editor";
 import { fetchPipeline } from "@/lib/pipeline";
 import { timeAgo } from "@/lib/time-ago";
+import { MdText } from "@/components/md-text";
+import { fetchSignature } from "@/lib/mail/signature";
+import { effectiveSignature, withSignature } from "@/lib/signature-format";
 
 export const dynamic = "force-dynamic";
 
@@ -213,11 +216,12 @@ export default async function CompanyDetailPage({
   const ready = eligibility.ok;
   const mayEnroll = ready && isOwner;
   const [enrollments, campaigns] = await Promise.all([fetchCompanyEnrollments(companyId), mayEnroll && actor ? fetchOpenCampaigns(actor) : Promise.resolve([])]);
-  const [playbooks, fits, sentMessages, senderEmail] = await Promise.all([
+  const [playbooks, fits, sentMessages, senderEmail, savedSignature] = await Promise.all([
     fetchPlaybooks(enrollments.map((e) => e.campaign_id)),
     fetchFitForCompany(companyId, campaigns.map((c) => c.id)),
     fetchCompanyMessages(companyId),
     actor ? fetchMailAddress(actor.id) : Promise.resolve(null),
+    actor ? fetchSignature(actor.id) : Promise.resolve(""),
   ]);
   const canActOnTasks =
     !!actor &&
@@ -541,6 +545,7 @@ export default async function CompanyDetailPage({
               canAct={canActOnTasks}
               senderName={actor?.name ?? ""}
               senderEmail={senderEmail}
+              signature={effectiveSignature(savedSignature, actor?.name ?? "")}
               enrollments={enrollments}
               playbooks={playbooks}
               campaigns={campaigns.map((c) => ({ ...c, fit: fits[c.id] ?? null }))}
@@ -605,7 +610,7 @@ export default async function CompanyDetailPage({
                             <details className="mt-1.5 rounded-lg border border-zinc-200 bg-zinc-50 p-2">
                               <summary className="cursor-pointer text-xs font-medium text-sky-700">Show the email</summary>
                               {sent.subject && <p className="mt-1.5 text-xs font-medium text-zinc-900">Subject: {sent.subject}</p>}
-                              <p className="mt-1 whitespace-pre-wrap text-xs text-zinc-700">{sent.body}</p>
+                              <MdText text={withSignature(sent.body, sent.signature)} className="mt-1 text-xs text-zinc-700" />
                             </details>
                           ) : null;
                         })()}

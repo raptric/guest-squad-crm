@@ -433,19 +433,19 @@ export async function fetchTaskMail(tasks: { id: string; step_channel: string }[
       WHERE task_id = ANY($1::bigint[]) AND status = 'draft' ORDER BY id`,
     [ids]
   );
-  const rows = await query<Omit<TaskMail, "sent" | "drafts"> & { task_id: string; sent_subject: string | null; sent_body: string | null; sent_at: string | null; sent_by: string | null; sent_source: MessageSource | null }>(
+  const rows = await query<Omit<TaskMail, "sent" | "drafts"> & { task_id: string; sent_subject: string | null; sent_body: string | null; sent_signature: string | null; sent_at: string | null; sent_by: string | null; sent_source: MessageSource | null }>(
     `SELECT t.id::text AS task_id,
             CASE WHEN s.channel = t.step_channel THEN coalesce(s.subject, '') ELSE '' END AS baseline_subject,
             CASE WHEN s.channel = t.step_channel THEN coalesce(s.body, '') ELSE '' END AS baseline_body,
             coalesce(ct.first_name, '') AS first_name, c.name AS company_name, coalesce(c.city, '') AS city,
             coalesce((SELECT ce.email FROM contact_emails ce WHERE ce.contact_id = ct.id ORDER BY ce.is_primary DESC NULLS LAST, ce.id LIMIT 1), c.email, '') AS to_email,
-            m.subject AS sent_subject, m.body AS sent_body, m.sent_at, su.name AS sent_by, m.source AS sent_source
+            m.subject AS sent_subject, m.body AS sent_body, m.signature AS sent_signature, m.sent_at, su.name AS sent_by, m.source AS sent_source
        FROM campaign_tasks t
        JOIN campaign_enrollments e ON e.id = t.enrollment_id
        JOIN companies c ON c.id = e.company_id
        LEFT JOIN contacts ct ON ct.id = e.contact_id
        LEFT JOIN campaign_steps s ON s.campaign_id = e.campaign_id AND s.position = t.step_position
-       LEFT JOIN LATERAL (SELECT subject, body, sent_at, sent_by, source FROM campaign_messages x WHERE x.task_id = t.id AND x.status = 'sent' ORDER BY x.id DESC LIMIT 1) m ON true
+       LEFT JOIN LATERAL (SELECT subject, body, signature, sent_at, sent_by, source FROM campaign_messages x WHERE x.task_id = t.id AND x.status = 'sent' ORDER BY x.id DESC LIMIT 1) m ON true
        LEFT JOIN users su ON su.id = m.sent_by
       WHERE t.id = ANY($1::bigint[])`,
     [ids]
@@ -460,7 +460,7 @@ export async function fetchTaskMail(tasks: { id: string; step_channel: string }[
         company_name: r.company_name,
         city: r.city,
         to_email: r.to_email,
-        sent: r.sent_body !== null ? { subject: r.sent_subject ?? "", body: r.sent_body, at: r.sent_at, by: r.sent_by, source: r.sent_source ?? "human" } : null,
+        sent: r.sent_body !== null ? { subject: r.sent_subject ?? "", body: r.sent_body, signature: r.sent_signature ?? "", at: r.sent_at, by: r.sent_by, source: r.sent_source ?? "human" } : null,
         drafts: drafts.filter((d) => d.task_id === r.task_id).map((d) => ({ id: d.id, subject: d.subject, body: d.body, facts_used: d.facts_used ?? [], notes: d.notes, at: d.at })),
       } satisfies TaskMail,
     ])
@@ -468,9 +468,9 @@ export async function fetchTaskMail(tasks: { id: string; step_channel: string }[
 }
 
 // The emails recorded as sent for a company, by id, so the activity timeline can show their text.
-export async function fetchCompanyMessages(companyId: number): Promise<Record<string, { subject: string; body: string }>> {
-  const rows = await query<{ id: string; subject: string; body: string }>("SELECT id::text, subject, body FROM campaign_messages WHERE company_id = $1 AND status = 'sent'", [companyId]);
-  return Object.fromEntries(rows.map((r) => [r.id, { subject: r.subject, body: r.body }]));
+export async function fetchCompanyMessages(companyId: number): Promise<Record<string, { subject: string; body: string; signature: string }>> {
+  const rows = await query<{ id: string; subject: string; body: string; signature: string }>("SELECT id::text, subject, body, signature FROM campaign_messages WHERE company_id = $1 AND status = 'sent'", [companyId]);
+  return Object.fromEntries(rows.map((r) => [r.id, { subject: r.subject, body: r.body, signature: r.signature }]));
 }
 
 export async function fetchCompanyEnrollments(companyId: number): Promise<EnrollmentRow[]> {

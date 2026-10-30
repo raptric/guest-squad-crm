@@ -24,6 +24,7 @@ export function CampaignCard({
   canAct,
   senderName,
   senderEmail,
+  signature,
   enrollments,
   playbooks,
   campaigns,
@@ -38,6 +39,7 @@ export function CampaignCard({
   canAct: boolean;
   senderName: string;
   senderEmail: string | null;
+  signature: string;
   enrollments: EnrollmentRow[];
   playbooks: Record<string, Playbook>;
   campaigns: CampaignOption[];
@@ -74,7 +76,7 @@ export function CampaignCard({
       ) : (
         <div className="space-y-5">
           {enrollments.map((e) => (
-            <EnrollmentBlock key={e.id} enrollment={e} playbook={playbooks[e.campaign_id]} canAct={canAct} today={today} senderName={senderName} senderEmail={senderEmail} />
+            <EnrollmentBlock key={e.id} enrollment={e} playbook={playbooks[e.campaign_id]} canAct={canAct} today={today} senderName={senderName} senderEmail={senderEmail} signature={signature} />
           ))}
           {!mayEnroll && enrollNote && <p className="text-xs text-zinc-500">{enrollNote}</p>}
         </div>
@@ -95,7 +97,7 @@ export function CampaignCard({
   );
 }
 
-function EnrollmentBlock({ enrollment: e, playbook, canAct, today, senderName, senderEmail }: { enrollment: EnrollmentRow; playbook: Playbook | undefined; canAct: boolean; today: string; senderName: string; senderEmail: string | null }) {
+function EnrollmentBlock({ enrollment: e, playbook, canAct, today, senderName, senderEmail, signature }: { enrollment: EnrollmentRow; playbook: Playbook | undefined; canAct: boolean; today: string; senderName: string; senderEmail: string | null; signature: string }) {
   const router = useRouter();
   const [stopping, setStopping] = useState(false);
   const [note, setNote] = useState("");
@@ -189,7 +191,7 @@ function EnrollmentBlock({ enrollment: e, playbook, canAct, today, senderName, s
                   {t.notes ? `: ${t.notes}` : ""}
                 </p>
               )}
-              {t.mail && <TaskEmail taskId={t.id} status={t.status} channel={t.step_channel} canAct={actable} mail={t.mail} senderName={senderName} senderEmail={senderEmail} />}
+              {t.mail && <TaskEmail taskId={t.id} status={t.status} channel={t.step_channel} canAct={actable} mail={t.mail} senderName={senderName} senderEmail={senderEmail} signature={signature} />}
               {!actionsInEmail && <TaskActions taskId={t.id} status={t.status} channel={t.step_channel} canAct={actable} />}
             </li>
           );

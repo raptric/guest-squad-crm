@@ -75,7 +75,7 @@ Write the Initial Email for this company. Start from the approved baseline: keep
 - Personalise the opening and the pain sentence with one or two facts from ABOUT THIS COMPANY. Choose the most relevant and most recent. Never use a fact that is not listed.
 - If the company facts offer nothing relevant, keep the baseline opening and say so in the notes.
 - Do not change the promise, the proof or the call to action. Do not add services, numbers or names from outside the knowledge.
-- Write real values, not placeholders: the contact's first name (if unknown, write "Hi there"), the company name, the sender's name.
+- Write real values, not placeholders: the contact's first name (if unknown, write "Hi there") and the company name.
 - Keep it as short as the baseline, or shorter.
 - If there is no baseline above, write the email from the campaign and the knowledge alone, to the same standard.
 Write {{generation.versions}} versions. Give each a different personalised opening.`;
@@ -109,7 +109,7 @@ Write this Follow-up Email for this company. Start from the approved baseline: k
 - Never say you are following up, checking in or circling back. Just add something useful.
 - Personalise with one fact from ABOUT THIS COMPANY. Never use a fact that is not listed. If nothing is relevant, keep the baseline and say so in the notes.
 - Do not change the promise, the proof or the call to action. Do not add services, numbers or names from outside the knowledge.
-- Write real values, not placeholders: the contact's first name (if unknown, write "Hi there"), the company name, the sender's name.
+- Write real values, not placeholders: the contact's first name (if unknown, write "Hi there") and the company name.
 - Keep it as short as the baseline, or shorter.
 - If there is no baseline above, write the email from the campaign, the knowledge and the earlier emails alone, to the same standard.
 Write {{generation.versions}} versions. Give each a different approach.`;

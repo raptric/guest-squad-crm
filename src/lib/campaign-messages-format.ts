@@ -17,7 +17,7 @@ export type TaskMail = {
   company_name: string;
   city: string;
   to_email: string;
-  sent: { subject: string; body: string; at: string | null; by: string | null; source: MessageSource } | null;
+  sent: { subject: string; body: string; signature: string; at: string | null; by: string | null; source: MessageSource } | null;
   drafts: MailDraft[];
 };
 

@@ -4,6 +4,10 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { diffWords, fillPlaceholders, leftoverPlaceholders, messageSource, type MailDraft, type TaskMail } from "@/lib/campaign-messages-format";
+import { dropTrailingName, withSignature } from "@/lib/signature-format";
+import { RichEditor } from "@/components/rich-editor";
+import { MdText } from "@/components/md-text";
+import { mdToHtml, mdToPlain } from "@/lib/rich-text";
 import { getEmailDraft, setEmailDraft } from "./email-draft-store";
 import { TaskActions } from "./task-actions";
 
@@ -34,6 +38,7 @@ export function TaskEmail({
   mail,
   senderName,
   senderEmail,
+  signature,
 }: {
   taskId: string;
   status: string;
@@ -42,6 +47,7 @@ export function TaskEmail({
   mail: TaskMail;
   senderName: string;
   senderEmail: string | null;
+  signature: string;
 }) {
   const router = useRouter();
   const existing = getEmailDraft(taskId);
@@ -76,7 +82,7 @@ export function TaskEmail({
           {mail.sent.at ? `, ${when(mail.sent.at)}` : ""} · from {SOURCE_TEXT[mail.sent.source]}
         </summary>
         {mail.sent.subject && <p className="mt-2 font-medium text-zinc-900">Subject: {mail.sent.subject}</p>}
-        <p className="mt-1 whitespace-pre-wrap text-zinc-700">{mail.sent.body}</p>
+        <MdText text={withSignature(mail.sent.body, mail.sent.signature)} className="mt-1 text-zinc-700" />
       </details>
     );
   }
@@ -89,7 +95,7 @@ export function TaskEmail({
 
   function start(from: "baseline" | "ai" | "human", text?: { subject: string; body: string }) {
     const s = text ? text.subject : from === "baseline" ? fill(mail.baseline_subject) : "";
-    const b = text ? text.body : from === "baseline" ? fill(mail.baseline_body) : "";
+    const b = dropTrailingName(text ? text.body : from === "baseline" ? fill(mail.baseline_body) : "", [senderName]);
     setSubject(s);
     setBody(b);
     setOpen(true);
@@ -116,7 +122,14 @@ export function TaskEmail({
   }
 
   async function copy(what: "subject" | "email") {
-    await navigator.clipboard.writeText(what === "subject" ? subject : body).catch(() => {});
+    if (what === "subject") await navigator.clipboard.writeText(subject).catch(() => {});
+    else {
+      const full = withSignature(body, signature);
+      // the formatted version for an email window, the plain one for anywhere else
+      await navigator.clipboard
+        .write([new ClipboardItem({ "text/html": new Blob([mdToHtml(full)], { type: "text/html" }), "text/plain": new Blob([mdToPlain(full)], { type: "text/plain" }) })])
+        .catch(() => navigator.clipboard.writeText(mdToPlain(full)).catch(() => {}));
+    }
     setCopied(what);
     setTimeout(() => setCopied(null), 1500);
   }
@@ -159,7 +172,7 @@ export function TaskEmail({
 
   const leftover = leftoverPlaceholders(`${subject}\n${body}`);
   const words = body.split(/\s+/).filter(Boolean).length;
-  const mailto = mail.to_email ? `mailto:${encodeURIComponent(mail.to_email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body.replace(/\n/g, "\r\n"))}` : null;
+  const mailto = mail.to_email ? `mailto:${encodeURIComponent(mail.to_email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(mdToPlain(withSignature(body, signature)).replace(/\n/g, "\r\n"))}` : null;
   const fresh = remaining !== null;
   const canSend = Boolean(senderEmail && mail.to_email);
   const ready = Boolean(subject.trim() && body.trim() && leftover.length === 0);
@@ -197,7 +210,7 @@ export function TaskEmail({
         <div className="rounded-lg border border-zinc-200 bg-white p-3 text-sm">
           <p className="text-xs text-zinc-500">The baseline as written for the campaign. The names in curly braces are filled in when you use it.</p>
           {mail.baseline_subject && <p className="mt-1 font-medium text-zinc-900">Subject: {mail.baseline_subject}</p>}
-          <p className="mt-1 whitespace-pre-wrap text-zinc-700">{mail.baseline_body}</p>
+          <MdText text={mail.baseline_body} className="mt-1 text-zinc-700" />
         </div>
       )}
 
@@ -224,19 +237,7 @@ export function TaskEmail({
                     {d.words} words
                   </p>
                   <p className="mt-1 text-sm font-medium text-zinc-900">{d.subject || "(no subject)"}</p>
-                  <p className="mt-1 whitespace-pre-wrap text-sm text-zinc-700">
-                    {hasBaseline
-                      ? diffWords(baselineBody, d.body).map((seg, k) =>
-                          seg.changed ? (
-                            <mark key={k} className="rounded bg-emerald-100 px-0.5 text-zinc-900">
-                              {seg.text}
-                            </mark>
-                          ) : (
-                            <span key={k}>{seg.text}</span>
-                          ),
-                        )
-                      : d.body}
-                  </p>
+                  <MdText segments={hasBaseline ? diffWords(baselineBody, d.body) : undefined} text={d.body} className="mt-1 text-sm text-zinc-700" />
                   {d.facts_used.length > 0 && (
                     <div className="mt-2 flex flex-wrap items-center gap-1.5">
                       <span className="text-xs font-medium text-zinc-500">Facts it used:</span>
@@ -287,7 +288,15 @@ export function TaskEmail({
             )}
           </div>
           <input value={subject} maxLength={300} onChange={(e) => edit({ subject: e.target.value })} placeholder="Subject" aria-label="Subject" className={`${field} font-medium`} />
-          <textarea rows={12} maxLength={10000} value={body} onChange={(e) => edit({ body: e.target.value })} placeholder="The email" aria-label="Email" className={field} />
+          <RichEditor value={body} onChange={(b) => edit({ body: b })} placeholder="The email" ariaLabel="Email" minHeight="14rem" />
+          {signature && (
+            <div className="rounded-md border border-dashed border-zinc-200 bg-zinc-50/70 px-3 py-2">
+              <MdText text={signature} className="text-sm text-zinc-500" />
+              <p className="mt-1 text-xs text-zinc-400">
+                Your signature, added when the email is sent. <Link href="/profile" className="text-sky-700 hover:underline">Change it on your Profile</Link>
+              </p>
+            </div>
+          )}
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs text-zinc-400">{words} words</span>
             {leftover.length > 0 && (

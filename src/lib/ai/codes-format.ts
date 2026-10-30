@@ -107,6 +107,7 @@ export const CODES: CodeDef[] = [
   co("Sender", "sender.title", "Sender job title"),
   co("Sender", "sender.phone", "Sender phone"),
   co("Sender", "sender.email", "Sender email"),
+  co("Sender", "sender.signature", "Sender signature, added under the email when it is sent"),
 
   co("Baseline and history", "baseline", "The saved baseline for this step, with headings", { block: true }),
   co("Baseline and history", "baseline.subject", "Baseline subject"),

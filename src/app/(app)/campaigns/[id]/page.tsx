@@ -10,6 +10,7 @@ import { DuplicateButton } from "../duplicate-button";
 import { PlaybookPanel } from "../playbook-panel";
 import { CampaignTabs } from "../campaign-tabs";
 import { audienceSummary } from "@/lib/campaign-fit-format";
+import { MdText } from "@/components/md-text";
 
 export const dynamic = "force-dynamic";
 
@@ -119,7 +120,7 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
                     <details className="mt-2 rounded-lg border border-zinc-200 bg-white p-2.5">
                       <summary className="cursor-pointer text-xs font-medium text-sky-700">Baseline email</summary>
                       {s.subject && <p className="mt-2 text-sm font-medium text-zinc-900">Subject: {s.subject}</p>}
-                      <p className="mt-1 whitespace-pre-wrap text-sm text-zinc-700">{s.body}</p>
+                      <MdText text={s.body} className="mt-1 text-sm text-zinc-700" />
                     </details>
                   )}
                 </li>
