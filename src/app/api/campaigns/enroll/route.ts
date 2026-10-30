@@ -11,7 +11,8 @@ const fail = (error: string, status = 400) => NextResponse.json({ error }, { sta
 //   * only the company's OWNER can enroll it
 //   * the company must meet the enrollment rule set in Settings (verified? allowed status / stage?)
 //   * a company can be in one active campaign at a time (more recipients can join that same campaign)
-//   * the recipient is one of the company's contacts, or the company's general email / phone
+//   * the recipients are some of the company's contacts, or the company's general email / phone (one or several at once; each gets
+//     its own enrollment and its own tasks)
 // One task is created per step, due (start date + day - 1): Day 1 is the enrollment day.
 export async function POST(request: Request) {
   const actor = await getCurrentUser();
@@ -21,6 +22,7 @@ export async function POST(request: Request) {
     company_id?: unknown;
     campaign_id?: unknown;
     recipient?: { type?: string; contact_id?: unknown };
+    recipients?: { type?: string; contact_id?: unknown }[];
     start_date?: unknown;
   };
   const companyId = Number(body.company_id);
@@ -78,29 +80,37 @@ export async function POST(request: Request) {
   );
   if (other) return fail(`This company is already in "${other.name}". Finish or stop that campaign first.`, 409);
 
-  // ----- recipient -----
-  let contactId: number | null = null;
-  let recipientLabel: string;
-  const recipient = body.recipient ?? {};
-  if (recipient.type === "contact") {
-    contactId = Number(recipient.contact_id);
-    const [contact] = Number.isInteger(contactId)
-      ? await query<{ first_name: string; last_name: string | null; email: string | null }>(
-          `SELECT ct.first_name, ct.last_name,
-                  (SELECT ce.email FROM contact_emails ce WHERE ce.contact_id = ct.id ORDER BY ce.is_primary DESC NULLS LAST, ce.id LIMIT 1) AS email
-             FROM contacts ct JOIN contact_companies cc ON cc.contact_id = ct.id
-            WHERE ct.id = $1 AND cc.company_id = $2 AND ct.deleted_at IS NULL`,
-          [contactId, companyId]
-        )
-      : [];
-    if (!contact) return fail("That contact isn't linked to this company.");
-    const fullName = `${contact.first_name} ${contact.last_name ?? ""}`.trim();
-    recipientLabel = contact.email ? `${fullName} (${contact.email})` : fullName;
-  } else if (recipient.type === "company") {
-    const channel = company.email ?? company.phone;
-    recipientLabel = channel ? `General contact (${channel})` : "General contact";
-  } else {
-    return fail("Choose who this campaign is for: a contact, or the company's general contact.");
+  // ----- recipients: { recipients: [...] }, or the older single { recipient } -----
+  const asked = Array.isArray(body.recipients) ? body.recipients : body.recipient ? [body.recipient] : [];
+  if (!asked.length) return fail("Choose who this campaign is for: a contact, or the company's general contact.");
+  if (asked.length > 50) return fail("Choose at most 50 recipients at once.");
+  const recipients: { type: "contact" | "company"; contactId: number | null; label: string }[] = [];
+  const seen = new Set<string>();
+  for (const r of asked) {
+    if (r?.type === "contact") {
+      const contactId = Number(r.contact_id);
+      const [contact] = Number.isInteger(contactId)
+        ? await query<{ first_name: string; last_name: string | null; email: string | null }>(
+            `SELECT ct.first_name, ct.last_name,
+                    (SELECT ce.email FROM contact_emails ce WHERE ce.contact_id = ct.id ORDER BY ce.is_primary DESC NULLS LAST, ce.id LIMIT 1) AS email
+               FROM contacts ct JOIN contact_companies cc ON cc.contact_id = ct.id
+              WHERE ct.id = $1 AND cc.company_id = $2 AND ct.deleted_at IS NULL`,
+            [contactId, companyId]
+          )
+        : [];
+      if (!contact) return fail("That contact isn't linked to this company.");
+      if (seen.has(`contact:${contactId}`)) continue;
+      seen.add(`contact:${contactId}`);
+      const fullName = `${contact.first_name} ${contact.last_name ?? ""}`.trim();
+      recipients.push({ type: "contact", contactId, label: contact.email ? `${fullName} (${contact.email})` : fullName });
+    } else if (r?.type === "company") {
+      if (seen.has("company")) continue;
+      seen.add("company");
+      const channel = company.email ?? company.phone;
+      recipients.push({ type: "company", contactId: null, label: channel ? `General contact (${channel})` : "General contact" });
+    } else {
+      return fail("Choose who this campaign is for: a contact, or the company's general contact.");
+    }
   }
 
   // ----- start date: today (or a bit later), as YYYY-MM-DD -----
@@ -115,31 +125,35 @@ export async function POST(request: Request) {
   const fit = (await fetchFitForCompany(companyId, [campaignId]))[String(campaignId)];
 
   try {
-    const result = await withTransaction(async (client) => {
-      const enrollment = (
+    const ids = await withTransaction(async (client) => {
+      const made: number[] = [];
+      for (const r of recipients) {
+        const enrollment = (
+          await client.query(
+            `INSERT INTO campaign_enrollments (campaign_id, company_id, recipient_type, contact_id, recipient_label, start_date, enrolled_by, fit_label, fit_detail)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
+            [campaignId, companyId, r.type, r.contactId, r.label, start, actor.id, fit?.label ?? null, fit ? JSON.stringify(fit.lines) : null]
+          )
+        ).rows[0];
+        for (const s of steps) {
+          await client.query(
+            `INSERT INTO campaign_tasks (enrollment_id, step_position, step_day, step_channel, step_title, step_instructions, due_date)
+             VALUES ($1, $2, $3, $4, $5, $6, $7::date + ($3 - 1))`,
+            [enrollment.id, s.position, s.day_number, s.channel, s.title, s.instructions, start]
+          );
+        }
         await client.query(
-          `INSERT INTO campaign_enrollments (campaign_id, company_id, recipient_type, contact_id, recipient_label, start_date, enrolled_by, fit_label, fit_detail)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
-          [campaignId, companyId, recipient.type, contactId, recipientLabel, start, actor.id, fit?.label ?? null, fit ? JSON.stringify(fit.lines) : null]
-        )
-      ).rows[0];
-      for (const s of steps) {
-        await client.query(
-          `INSERT INTO campaign_tasks (enrollment_id, step_position, step_day, step_channel, step_title, step_instructions, due_date)
-           VALUES ($1, $2, $3, $4, $5, $6, $7::date + ($3 - 1))`,
-          [enrollment.id, s.position, s.day_number, s.channel, s.title, s.instructions, start]
+          `INSERT INTO activities (company_id, activity_type, actor_type, actor_name, body)
+           VALUES ($1, 'note', 'human', $2, $3)`,
+          [companyId, actor.name, `Enrolled in the campaign "${campaign.name}" for ${r.label}. Starts ${start}, ${steps.length} ${steps.length === 1 ? "task" : "tasks"}.`]
         );
+        made.push(Number(enrollment.id));
       }
-      await client.query(
-        `INSERT INTO activities (company_id, activity_type, actor_type, actor_name, body)
-         VALUES ($1, 'note', 'human', $2, $3)`,
-        [companyId, actor.name, `Enrolled in the campaign "${campaign.name}" for ${recipientLabel}. Starts ${start}, ${steps.length} ${steps.length === 1 ? "task" : "tasks"}.`]
-      );
-      return Number(enrollment.id);
+      return made;
     });
-    return NextResponse.json({ ok: true, enrollment_id: result, tasks: steps.length }, { status: 201 });
+    return NextResponse.json({ ok: true, enrollment_id: ids[0], enrollment_ids: ids, recipients: ids.length, tasks: steps.length * ids.length }, { status: 201 });
   } catch (e) {
-    if (isUniqueViolation(e)) return fail("That recipient is already in this campaign.", 409);
+    if (isUniqueViolation(e)) return fail("One of those recipients is already in this campaign. Untick it and try again.", 409);
     throw e;
   }
 }

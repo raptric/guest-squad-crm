@@ -253,10 +253,14 @@ function EnrollDialog({
   const router = useRouter();
   const options = lockedCampaignId ? campaigns.filter((c) => c.id === lockedCampaignId) : campaigns;
   const keys = [...recipients.map((r) => `contact:${r.id}`), "company"];
-  const firstFree = keys.find((k) => !takenRecipients.includes(k)) ?? "";
+  const firstFree = keys.find((k) => !takenRecipients.includes(k));
+  const freeContacts = recipients.map((r) => `contact:${r.id}`).filter((k) => !takenRecipients.includes(k));
 
   const [campaignId, setCampaignId] = useState(options[0]?.id ?? "");
-  const [recipient, setRecipient] = useState(firstFree);
+  const [picked, setPicked] = useState<string[]>(firstFree ? [firstFree] : []);
+  const toggle = (key: string) => setPicked((p) => (p.includes(key) ? p.filter((k) => k !== key) : [...p, key]));
+  const allContacts = freeContacts.length > 0 && freeContacts.every((k) => picked.includes(k));
+  const toggleAll = () => setPicked((p) => (allContacts ? p.filter((k) => !freeContacts.includes(k)) : [...new Set([...p, ...freeContacts])]));
   const [start, setStart] = useState(today);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -271,7 +275,7 @@ function EnrollDialog({
       body: JSON.stringify({
         company_id: companyId,
         campaign_id: Number(campaignId),
-        recipient: recipient === "company" ? { type: "company" } : { type: "contact", contact_id: Number(recipient.split(":")[1]) },
+        recipients: picked.map((k) => (k === "company" ? { type: "company" } : { type: "contact", contact_id: Number(k.split(":")[1]) })),
         start_date: start,
       }),
     });
@@ -288,7 +292,7 @@ function EnrollDialog({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => !saving && onClose()}>
       <div className="max-h-[90vh] w-full max-w-lg space-y-5 overflow-y-auto rounded-2xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
-        <h2 className="text-lg font-semibold text-zinc-900">{lockedCampaignId ? "Add a recipient" : "Enroll in a campaign"}</h2>
+        <h2 className="text-lg font-semibold text-zinc-900">{lockedCampaignId ? "Add recipients" : "Enroll in a campaign"}</h2>
 
         {options.length === 0 ? (
           <p className="text-sm text-zinc-500">There are no active campaigns yet. An admin needs to create one first.</p>
@@ -341,12 +345,18 @@ function EnrollDialog({
 
             <fieldset className="space-y-2">
               <legend className="text-sm font-medium text-zinc-700">Who is this for?</legend>
+              {freeContacts.length > 1 && (
+                <label className="flex cursor-pointer items-start gap-2 border-b border-zinc-100 pb-2 text-sm font-medium text-zinc-800">
+                  <input type="checkbox" checked={allContacts} onChange={toggleAll} className="mt-1" />
+                  <span>All contacts ({freeContacts.length}). Each one gets their own tasks.</span>
+                </label>
+              )}
               {recipients.map((r) => {
                 const key = `contact:${r.id}`;
                 const taken = takenRecipients.includes(key);
                 return (
                   <label key={key} className={`flex items-start gap-2 text-sm ${taken ? "text-zinc-400" : "cursor-pointer text-zinc-700"}`}>
-                    <input type="radio" disabled={taken} checked={recipient === key} onChange={() => setRecipient(key)} className="mt-1" />
+                    <input type="checkbox" disabled={taken} checked={picked.includes(key)} onChange={() => toggle(key)} className="mt-1" />
                     <span>
                       {r.label}
                       {taken && <span className="ml-2 text-xs">already in this campaign</span>}
@@ -355,7 +365,7 @@ function EnrollDialog({
                 );
               })}
               <label className={`flex items-start gap-2 text-sm ${takenRecipients.includes("company") ? "text-zinc-400" : "cursor-pointer text-zinc-700"}`}>
-                <input type="radio" disabled={takenRecipients.includes("company")} checked={recipient === "company"} onChange={() => setRecipient("company")} className="mt-1" />
+                <input type="checkbox" disabled={takenRecipients.includes("company")} checked={picked.includes("company")} onChange={() => toggle("company")} className="mt-1" />
                 <span>
                   The company&apos;s general email / phone
                   {takenRecipients.includes("company") && <span className="ml-2 text-xs">already in this campaign</span>}
@@ -380,10 +390,10 @@ function EnrollDialog({
           {options.length > 0 && (
             <button
               onClick={submit}
-              disabled={saving || !campaignId || !recipient || !start}
+              disabled={saving || !campaignId || picked.length === 0 || !start}
               className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-40"
             >
-              {saving ? "Enrolling..." : `${campaign?.fit?.label === "weak" ? "Enroll anyway" : "Enroll"} (${campaign?.steps.length ?? 0} tasks)`}
+              {saving ? "Enrolling..." : `${campaign?.fit?.label === "weak" ? "Enroll anyway" : "Enroll"}${picked.length > 1 ? ` ${picked.length} recipients` : ""} (${(campaign?.steps.length ?? 0) * Math.max(picked.length, 1)} tasks)`}
             </button>
           )}
         </div>
